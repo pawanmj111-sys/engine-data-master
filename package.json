@@ -11,7 +11,11 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:electron": "cross-env ELECTRON=1 vite build",
+    "electron:dev": "concurrently -k \"vite dev --port 5173\" \"wait-on tcp:5173 && cross-env ELECTRON_DEV_URL=http://localhost:5173 electron .\"",
+    "electron:start": "npm run build:electron && electron .",
+    "build:exe": "npm run build:electron && electron-builder --win"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -98,6 +102,52 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "cross-env": "^7.0.3",
+    "concurrently": "^9.1.0",
+    "wait-on": "^8.0.1"
+  },
+  "main": "electron/main.cjs",
+  "description": "EngineLab - engine test data comparison and cyclic report generator",
+  "author": "EngineLab",
+  "version": "1.0.0",
+  "build": {
+    "appId": "com.enginelab.desktop",
+    "productName": "EngineLab",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/client/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "portable": {
+      "artifactName": "EngineLab-${version}-portable.exe"
+    }
   }
 }
