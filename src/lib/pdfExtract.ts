@@ -323,7 +323,7 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
   if (engineOutDetails) values.engineOutDetails = engineOutDetails;
   const grab = (re: RegExp) => { for (const line of lines) { const m = line.match(re); if (m) return m[m.length - 1].trim(); } return ""; };
   values.cycle = cycle;
-  values.date = grab(/\b(?:Test\s*)?Date\s*[:-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
+  values.date = grab(/\b(?:Test\s*)?Date(?:\s*\/\s*Time)?\s*[:-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
   values.testId = grab(/Test\s*(?:ID|No\.?|Number)\s*[:-]?\s*([A-Za-z0-9_./-]+)/i);
   values.testName = grab(/Test\s*Name\s*[:-]\s*(.+?)(?:\s{2,}|$)/i);
   values.engineModel = grab(/Engine\s+(?:model|family)\s+(?:\[[^\]]+\]\s*)?([A-Za-z0-9_./-]+)/i);
