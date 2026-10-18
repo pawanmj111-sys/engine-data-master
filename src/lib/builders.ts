@@ -101,6 +101,32 @@ export function buildCyclicReport(s: S): ReportDoc {
       small: true,
     });
   }
+  const tailpipeKeys = [
+    ["tailpipeCH4", "CH4 [g/kWh]"],
+    ["tailpipeCO2", "CO2 [g/kWh]"],
+    ["tailpipeCOL", "COL [g/kWh]"],
+    ["tailpipeCO", "CO (COL - Tailpipe) [g/kWh]"],
+    ["tailpipeTHC", "THC [g/kWh]"],
+    ["tailpipeNO2", "NO2 (NOX,NO - Tailpipe) [g/kWh]"],
+    ["tailpipeNOX", "NOX [g/kWh]"],
+    ["tailpipeNO", "NO [g/kWh]"],
+    ["tailpipeO2", "O2 [g/kWh]"],
+  ] as const;
+  const tailpipeRecords = s.cyclicRecords.filter((record) =>
+    tailpipeKeys.some(([key]) => Boolean(record.values[key])),
+  );
+  if (tailpipeRecords.length) {
+    blocks.push({ type: "heading", text: "Tailpipe (EBH02) bench results — not driftcorrected · Specific results Phase 1" });
+    blocks.push({
+      type: "table",
+      head: ["Source PDF", ...tailpipeKeys.map(([, label]) => label)],
+      body: tailpipeRecords.map((record) => [
+        record.source,
+        ...tailpipeKeys.map(([key]) => record.values[key] ?? ""),
+      ]),
+      small: true,
+    });
+  }
   blocks.push({ type: "heading", text: "Source reports and extraction status" });
   blocks.push({
     type: "table",
