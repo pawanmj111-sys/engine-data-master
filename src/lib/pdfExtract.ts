@@ -8,29 +8,123 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
-export async function pdfLines(file: File): Promise<string[]> {
+export interface PositionedPdfTextItem {
+  page: number;
+  x: number;
+  y: number;
+  text: string;
+}
+
+async function readPdfData(file: File): Promise<{ lines: string[]; items: PositionedPdfTextItem[] }> {
   const pdfjs = await loadPdfjs();
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const lines: string[] = [];
+  const positioned: PositionedPdfTextItem[] = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
     const rows = new Map<number, { x: number; s: string }[]>();
     for (const it of tc.items as { str: string; transform: number[] }[]) {
       if (!it.str?.trim()) continue;
-      const y = Math.round(it.transform[5] / 2) * 2;
-      if (!rows.has(y)) rows.set(y, []);
-      rows.get(y)!.push({ x: it.transform[4], s: it.str });
+      const x = it.transform[4];
+      const y = it.transform[5];
+      positioned.push({ page: p, x, y, text: it.str.trim() });
+      const rowY = Math.round(y / 2) * 2;
+      if (!rows.has(rowY)) rows.set(rowY, []);
+      rows.get(rowY)!.push({ x, s: it.str.trim() });
     }
     [...rows.entries()].sort((a, b) => b[0] - a[0])
-      .forEach(([, items]) => lines.push(items.sort((a, b) => a.x - b.x).map((i) => i.s.trim()).join("  ")));
+      .forEach(([, items]) => lines.push(items.sort((a, b) => a.x - b.x).map((i) => i.s).join("  ")));
   }
-  return lines;
+  return { lines, items: positioned };
+}
+
+export async function pdfLines(file: File): Promise<string[]> {
+  return (await readPdfData(file)).lines;
 }
 
 const NUMBER_SOURCE = "[-+]?(?:\\d+(?:[.,]\\d*)?|[.,]\\d+)(?:\\s*[x×]\\s*10\\s*\\^?\\s*[-+]?\\d+|[eE][-+]?\\d+)?";
 const NUM = new RegExp(NUMBER_SOURCE, "g");
 const normNum = (s: string) => s.replace(/\s+/g, "").replace(",", ".").replace(/[x×]10\^?/, "E");
+
+
+const ENGINE_OUT_SPECIFIC_DEFS: { key: string; label: string; re: RegExp }[] = [
+  { key: "engineOutCH4", label: "CH4", re: /^\s*CH4\b/i },
+  { key: "engineOutCO2", label: "CO2", re: /^\s*CO2\b/i },
+  { key: "engineOutCOH", label: "COH", re: /^\s*COH\b/i },
+  { key: "engineOutCO", label: "CO (COH - EngineOut)", re: /^\s*CO\s*\(\s*COH\s*-\s*EngineOut\s*\)/i },
+  { key: "engineOutTHC", label: "THC", re: /^\s*THC\b/i },
+  { key: "engineOutNO2", label: "NO2 (NOX,NO - EngineOut)", re: /^\s*NO2\s*\(\s*NOX\s*,\s*NO\s*-\s*EngineOut\s*\)/i },
+  { key: "engineOutNOX", label: "NOX", re: /^\s*NOX\b/i },
+  { key: "engineOutNO", label: "NO", re: /^\s*NO\b/i },
+  { key: "engineOutO2", label: "O2", re: /^\s*O2\b/i },
+];
+
+function valuesFromSpecificRows(rows: string[]): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const def of ENGINE_OUT_SPECIFIC_DEFS) {
+    const row = rows.find((line) => def.re.test(line));
+    if (!row) continue;
+    const label = def.re.exec(row);
+    if (!label) continue;
+    const value = row.slice(label[0].length).match(NUM)?.map(normNum)?.[0];
+    if (value) values[def.key] = value;
+  }
+  return values;
+}
+
+function engineOutDetailsFromValues(values: Record<string, string>): string {
+  return ENGINE_OUT_SPECIFIC_DEFS
+    .filter((def) => values[def.key] !== undefined)
+    .map((def) => def.label + ": " + values[def.key] + " g/kWh")
+    .join("\n");
+}
+
+/**
+ * Uses PDF.js item coordinates to select the rightmost "Specific results" table.
+ * This matters because each PDF page places Concentrations, Mass results and Specific results side by side.
+ */
+export function parseEngineOutSpecificResultsFromItems(items: PositionedPdfTextItem[]): Record<string, string> {
+  const pages = [...new Set(items.map((item) => item.page))];
+  for (const page of pages) {
+    const pageItems = items.filter((item) => item.page === page);
+    const pageText = pageItems.map((item) => item.text).join(" ");
+    if (!/EngineOut/i.test(pageText) || !/bench\s+results/i.test(pageText) || !/not\s+driftcorrected/i.test(pageText)) continue;
+
+    const groups = new Map<number, PositionedPdfTextItem[]>();
+    for (const item of pageItems) {
+      const y = Math.round(item.y / 2) * 2;
+      if (!groups.has(y)) groups.set(y, []);
+      groups.get(y)!.push(item);
+    }
+    const rows = [...groups.entries()].map(([y, rowItems]) => ({
+      y,
+      items: rowItems.sort((a, b) => a.x - b.x),
+      text: rowItems.sort((a, b) => a.x - b.x).map((item) => item.text).join(" "),
+    }));
+    const heading = rows.find((row) => /Specific\s+results/i.test(row.text));
+    if (!heading) continue;
+    const headingItem = heading.items.find((item) => /Specific/i.test(item.text));
+    if (!headingItem) continue;
+
+    // The next section begins at "Fuel consumption"; use it to keep other tables/metadata out.
+    const lowerHeading = rows
+      .filter((row) => row.y < heading.y && row.items.some((item) => /^Fuel\s+consumption$/i.test(item.text.trim())))
+      .sort((a, b) => b.y - a.y)[0];
+    const lowerY = lowerHeading?.y ?? heading.y - 180;
+    const specificRows = rows
+      .filter((row) => row.y < heading.y - 2 && row.y > lowerY + 2)
+      .map((row) => row.items
+        .filter((item) => item.x >= headingItem.x - 20)
+        .sort((a, b) => a.x - b.x)
+        .map((item) => item.text)
+        .join(" "))
+      .filter((row) => row.trim().length > 0);
+    const values = valuesFromSpecificRows(specificRows);
+    if (Object.keys(values).length > 0) return values;
+  }
+  return {};
+}
 
 const POLL: { key: string; re: RegExp }[] = [
   { key: "noxThc", re: /\b(NOx\s*\+\s*T?HC|T?HC\s*\+\s*NOx)\b/i },
@@ -118,31 +212,8 @@ function parseSpecificResults(lines: string[]) {
   const start = lines.findIndex((line, i) => /Specific\s+results\s+Phase\s*1/i.test(line) ||
     (/Specific\s+results/i.test(line) && /Phase\s*1/i.test(lines[i + 1] ?? "")));
   if (start < 0 || !lines.slice(Math.max(0, start - 12), start).some((line) => /EngineOut/i.test(line))) return "";
-  const section = lines.slice(start, start + 55);
-  const defs: { label: string; re: RegExp }[] = [
-    { label: "CH4", re: /^\s*CH4\b/i }, { label: "CO2", re: /^\s*CO2\b/i },
-    { label: "COH", re: /^\s*COH\b/i }, { label: "CO (COH - EngineOut)", re: /^\s*CO\b(?!2|H)/i },
-    { label: "THC", re: /^\s*THC\b/i }, { label: "NO2 (NOX,NO - EngineOut)", re: /^\s*NO2\b/i },
-    { label: "NOX", re: /^\s*NOX\b/i }, { label: "NO", re: /^\s*NO\b(?![A-Z0-9])/i }, { label: "O2", re: /^\s*O2\b/i },
-  ];
-  const out: string[] = [];
-  for (const def of defs) {
-    const ix = section.findIndex((line) => def.re.test(line));
-    if (ix < 0) continue;
-    const candidate = section[ix];
-    const labelMatch = def.re.exec(candidate);
-    const afterLabel = labelMatch?.index !== undefined ? candidate.slice(labelMatch.index + labelMatch[0].length) : candidate;
-    let nums = afterLabel.match(NUM)?.map(normNum) ?? [];
-    if (!nums.length) {
-      for (let j = ix + 1; j < Math.min(section.length, ix + 3); j++) {
-        if (defs.some((other) => other.label !== def.label && other.re.test(section[j]))) break;
-        nums = section[j].match(NUM)?.map(normNum) ?? [];
-        if (nums.length) break;
-      }
-    }
-    if (nums.length) out.push(def.label + ": " + nums[0] + " g/kWh");
-  }
-  return out.join("\n");
+  const section = lines.slice(start + 1, start + 56);
+  return engineOutDetailsFromValues(valuesFromSpecificRows(section));
 }
 
 export function extractFromLines(lines: string[], fileName: string, cycle: CyclicCycle): CyclicRecord {
@@ -268,7 +339,16 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
 
 export async function extractPdf(file: File, cycle: CyclicCycle): Promise<CyclicRecord> {
   try {
-    return extractFromLines(await pdfLines(file), file.name, cycle);
+    const pdfData = await readPdfData(file);
+    const record = extractFromLines(pdfData.lines, file.name, cycle);
+    const engineOutValues = parseEngineOutSpecificResultsFromItems(pdfData.items);
+    if (Object.keys(engineOutValues).length > 0) {
+      Object.assign(record.values, engineOutValues);
+      record.values.engineOutDetails = engineOutDetailsFromValues(engineOutValues);
+      record.message = [record.message, "EngineOut (EBH01) bench results — Specific results Phase 1 extracted from the rightmost table using PDF text coordinates."]
+        .filter(Boolean).join(" ");
+    }
+    return record;
   } catch (e) {
     return { id: uid(), source: file.name, status: "error", message: "Could not read PDF: " + (e as Error).message, sectionText: "", values: {} };
   }
