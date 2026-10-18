@@ -211,12 +211,16 @@ function RootComponent() {
           >
             {licenseBusy ? "Verifying…" : "Activate license"}
           </button>
-          {licenseScreenOpen && licenseState.status === "valid" && (
+          {licenseScreenOpen && (
             <button
               type="button"
               onClick={() => {
-                setLicenseText(window.localStorage.getItem(LICENSE_STORAGE_KEY) ?? "");
-                setLicenseScreenOpen(false);
+                const saved = window.localStorage.getItem(LICENSE_STORAGE_KEY) ?? "";
+                setLicenseText(saved);
+                void verifyLicenseText(saved).then((state) => {
+                  setLicenseState(state);
+                  if (state.status === "valid") setLicenseScreenOpen(false);
+                });
               }}
               className="mt-4 ml-2 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold"
             >
