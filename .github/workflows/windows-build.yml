@@ -10,10 +10,6 @@ on:
       - "v*"
   workflow_dispatch:
 
-concurrency:
-  group: engine-data-master-${{ github.event.pull_request.head.ref || github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
