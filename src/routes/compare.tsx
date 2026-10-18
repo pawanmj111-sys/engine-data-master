@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { useApp, uid, type GraphConfig } from "@/lib/store";
 import { readFileSheets } from "@/lib/parse";
 import { buildFigure, exportGraphData, figureToPng, safe, statsRows, STATS_HEAD, traceStyle } from "@/lib/figure";
-import { downloadDataUrl } from "@/lib/report";
+import { downloadDataUrl, exportPdf } from "@/lib/report";
+import { buildCompareReport } from "@/lib/builders";
 import { Btn, Field, Inp, PageHeader, Panel, Segmented, Sel, Warnings } from "@/components/kit";
 import { DatasetRow } from "@/components/DatasetRow";
 import { FrontEditor, FtpFrontEditor } from "@/components/FrontPageEditor";
@@ -26,9 +27,12 @@ function Compare() {
   const s = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const templateRef = useRef<HTMLInputElement>(null);
+  const templateActionRef = useRef<"load" | "export">("load");
+  const [selectedCyclicRecordId, setSelectedCyclicRecordId] = useState("");
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasSynonyms, setAliasSynonyms] = useState("");
   const allHeaders = useMemo(() => [...new Set([...s.datasets.flatMap((d) => d.headers), ...Object.keys(s.parameterAliases)])], [s.datasets, s.parameterAliases]);
+  const selectedCyclicRecord = s.cyclicRecords.find((record) => record.id === selectedCyclicRecordId) ?? s.cyclicRecords[s.cyclicRecords.length - 1];
   const g = s.graphs.find((x) => x.id === s.activeGraph) ?? s.graphs[0];
 
   const onFiles = async (files: FileList | null) => {
@@ -56,7 +60,7 @@ function Compare() {
     toast.success("Template saved as a JSON file. Dataset contents are not included.");
   };
 
-  const loadTemplate = async (file: File) => {
+  const loadTemplate = async (file: File, exportAfterLoad = false) => {
     try {
       const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
       if (parsed.format !== "EngineDataMasterGraphTemplate" || parsed.version !== 1 || !Array.isArray(parsed.graphs)) {
@@ -93,6 +97,12 @@ function Compare() {
       s.set({ cycle, dataType, graphs, activeGraph: graphs[0].id, parameterAliases: aliases });
       window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(aliases));
       toast.success(`Loaded ${graphs.length} graph configuration(s). Check any parameter-mapping warnings for the selected datasets.`);
+      if (exportAfterLoad) {
+        const current = useApp.getState();
+        const doc = await buildCompareReport(current);
+        await exportPdf(doc, `${current.cycle}_comparison_report.pdf`);
+        toast.success("Comparison report exported from the loaded template.");
+      }
     } catch (e) {
       toast.error((e as Error).message || "Could not load template.");
     }
@@ -152,8 +162,9 @@ function Compare() {
       <Panel title="4 · Reusable templates & parameter mappings">
         <div className="mb-4 flex flex-wrap gap-2">
           <Btn variant="primary" disabled={!s.graphs.length} onClick={saveTemplate}>Save graph template (JSON)</Btn>
-          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file); e.target.value = ""; }} />
-          <Btn onClick={() => templateRef.current?.click()}>Load template</Btn>
+          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file, templateActionRef.current === "export"); e.target.value = ""; }} />
+          <Btn onClick={() => { templateActionRef.current = "load"; templateRef.current?.click(); }}>Load template</Btn>
+          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "export"; templateRef.current?.click(); }}>Load template + export PDF</Btn>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">Templates save cycle, data type, graph settings, and parameter aliases—not uploaded Excel contents. You can move the JSON template between machines.</p>
         <div className="grid gap-2 md:grid-cols-[1fr_1.4fr_auto]">
@@ -178,6 +189,47 @@ function Compare() {
       </Panel>
 
       <Panel title={`Report front page — ${s.cycle}`}>
+        <div className="mb-4 rounded border p-3">
+          <div className="mb-2 font-medium">Use a PDF Cyclic Summary on this comparison front page</div>
+          <p className="mb-3 text-xs text-muted-foreground">Import metadata and available emission summary values from a PDF already extracted in the PDF Cyclic Summary page. Missing source values stay blank.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="PDF summary record" className="min-w-72 flex-1">
+              <Sel value={selectedCyclicRecord?.id ?? ""} onChange={(e) => setSelectedCyclicRecordId(e.target.value)}>
+                <option value="">— select a processed PDF —</option>
+                {s.cyclicRecords.map((record) => <option key={record.id} value={record.id}>{record.source} ({record.status})</option>)}
+              </Sel>
+            </Field>
+            <Btn disabled={!selectedCyclicRecord} onClick={() => {
+              if (!selectedCyclicRecord) return;
+              const record = selectedCyclicRecord;
+              const front = { ...s.compareFront, fields: [...s.compareFront.fields] };
+              const imported: [string, string][] = [
+                ["Date", record.values.date ?? ""],
+                ["Engine Model", record.values.engine ?? ""],
+                ["Test Cycle", s.cyclicCycle],
+                ["Test ID", record.values.testId ?? ""],
+                ["Test Name", record.values.testName ?? ""],
+                ["Test File Name", record.source],
+                ["PDF Summary Result", record.values.result ?? ""],
+                ["CO Actual", record.values.co ?? ""],
+                ["CO Limit", record.values.coLimit ?? ""],
+                ["NOx+HC Actual", record.values.noxHc ?? ""],
+                ["NOx+HC Limit", record.values.noxHcLimit ?? ""],
+                ["PM Actual", record.values.pm ?? ""],
+                ["PM Limit", record.values.pmLimit ?? ""],
+                ["PN Actual", record.values.pn ?? ""],
+                ["PN Limit", record.values.pnLimit ?? ""],
+              ].filter(([, value]) => value.trim().length > 0);
+              for (const [label, value] of imported) {
+                const found = front.fields.findIndex((field) => field.label.trim().toLowerCase() === label.toLowerCase());
+                if (found >= 0) front.fields[found] = { ...front.fields[found], value, hidden: false };
+                else front.fields.push({ id: uid(), label, value, hidden: false, custom: true });
+              }
+              s.set({ cycle: s.cyclicCycle, compareFront: front });
+              toast.success("PDF Cyclic Summary values copied to the Excel comparison front page. Review the fields before export.");
+            }}>Use PDF summary on front page</Btn>
+          </div>
+        </div>
         {s.cycle === "FTP"
           ? <FtpFrontEditor value={s.ftpFront} onChange={(ftpFront) => s.set({ ftpFront })} />
           : <FrontEditor value={s.compareFront} onChange={(compareFront) => s.set({ compareFront })} />}
@@ -192,6 +244,8 @@ function Compare() {
 
 function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
   const s = useApp();
+  const [parameterSearch, setParameterSearch] = useState("");
+  const matchingHeaders = useMemo(() => headers.filter((h) => h.toLowerCase().includes(parameterSearch.trim().toLowerCase())), [headers, parameterSearch]);
   const up = (p: Partial<GraphConfig>) => s.updateGraph(g.id, p);
   const fig = useMemo(() => buildFigure(g, s.datasets, s.dataType, false, s.parameterAliases), [g, s.datasets, s.dataType, s.parameterAliases]);
   const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -202,15 +256,16 @@ function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
       <div className="space-y-3">
         <Field label="Title"><Inp value={g.title} onChange={(e) => up({ title: e.target.value })} /></Field>
         <Field label="Subtitle"><Inp value={g.subtitle} onChange={(e) => up({ subtitle: e.target.value })} /></Field>
+        <Field label="Search parameters"><Inp value={parameterSearch} placeholder="Search a parameter (e.g. FB_VAL, FC RATE)" onChange={(e) => setParameterSearch(e.target.value)} /></Field>
         <Field label={s.dataType === "triggered" ? "X-axis (trigger / mode column)" : "X-axis (time column)"}>
           <Sel value={g.xCol} onChange={(e) => up({ xCol: e.target.value })}>
             <option value="">— select —</option>
-            {headers.map((h) => <option key={h}>{h}</option>)}
+            {matchingHeaders.map((h) => <option key={h}>{h}</option>)}
           </Sel>
         </Field>
         <Field label="Y parameters (multi-select)">
           <div className="max-h-44 overflow-auto rounded border bg-background p-1 text-sm">
-            {headers.filter((h) => h !== g.xCol).map((h) => (
+            {matchingHeaders.filter((h) => h !== g.xCol).map((h) => (
               <label key={h} className="flex items-center gap-2 px-1 py-0.5 text-foreground">
                 <input type="checkbox" checked={g.yCols.includes(h)} onChange={() => up({ yCols: toggle(g.yCols, h) })} />{h}
               </label>
