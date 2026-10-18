@@ -75,7 +75,7 @@ function Cyclic() {
                     <button className="text-destructive" onClick={() => s.set({ cyclicRecords: s.cyclicRecords.filter((x) => x.id !== r.id) })}>Remove</button>
                   </td>
                 </tr>
-                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
+                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut EBH01 · Specific results Phase 1</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
               </>))}
             </tbody>
           </table>
