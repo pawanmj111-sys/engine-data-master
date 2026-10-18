@@ -5,7 +5,7 @@ import { useApp, uid, type GraphConfig } from "@/lib/store";
 import { readFileSheets } from "@/lib/parse";
 import { buildFigure, exportGraphData, figureToPng, safe, statsRows, STATS_HEAD, traceStyle } from "@/lib/figure";
 import { downloadDataUrl, exportPdf } from "@/lib/report";
-import { buildCompareReport } from "@/lib/builders";
+import { buildCompareReport, exportCompareWorkbook } from "@/lib/builders";
 import { Btn, Field, Inp, PageHeader, Panel, Segmented, Sel, Warnings } from "@/components/kit";
 import { DatasetRow } from "@/components/DatasetRow";
 import { FrontEditor, FtpFrontEditor } from "@/components/FrontPageEditor";
@@ -27,7 +27,7 @@ function Compare() {
   const s = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const templateRef = useRef<HTMLInputElement>(null);
-  const templateActionRef = useRef<"load" | "export">("load");
+  const templateActionRef = useRef<"load" | "pdf" | "xlsx">("load");
   const [selectedCyclicRecordId, setSelectedCyclicRecordId] = useState("");
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasSynonyms, setAliasSynonyms] = useState("");
@@ -60,7 +60,7 @@ function Compare() {
     toast.success("Template saved as a JSON file. Dataset contents are not included.");
   };
 
-  const loadTemplate = async (file: File, exportAfterLoad = false) => {
+  const loadTemplate = async (file: File, exportAfterLoad: "load" | "pdf" | "xlsx" = "load") => {
     try {
       const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
       if (parsed.format !== "EngineDataMasterGraphTemplate" || parsed.version !== 1 || !Array.isArray(parsed.graphs)) {
@@ -97,11 +97,14 @@ function Compare() {
       s.set({ cycle, dataType, graphs, activeGraph: graphs[0].id, parameterAliases: aliases });
       window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(aliases));
       toast.success(`Loaded ${graphs.length} graph configuration(s). Check any parameter-mapping warnings for the selected datasets.`);
-      if (exportAfterLoad) {
+      if (exportAfterLoad === "pdf") {
         const current = useApp.getState();
         const doc = await buildCompareReport(current);
         await exportPdf(doc, `${current.cycle}_comparison_report.pdf`);
-        toast.success("Comparison report exported from the loaded template.");
+        toast.success("Comparison PDF exported from the loaded template.");
+      } else if (exportAfterLoad === "xlsx") {
+        exportCompareWorkbook(useApp.getState());
+        toast.success("Comparison Excel workbook exported from the loaded template.");
       }
     } catch (e) {
       toast.error((e as Error).message || "Could not load template.");
@@ -162,9 +165,10 @@ function Compare() {
       <Panel title="4 · Reusable templates & parameter mappings">
         <div className="mb-4 flex flex-wrap gap-2">
           <Btn variant="primary" disabled={!s.graphs.length} onClick={saveTemplate}>Save graph template (JSON)</Btn>
-          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file, templateActionRef.current === "export"); e.target.value = ""; }} />
+          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file, templateActionRef.current); e.target.value = ""; }} />
           <Btn onClick={() => { templateActionRef.current = "load"; templateRef.current?.click(); }}>Load template</Btn>
-          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "export"; templateRef.current?.click(); }}>Load template + export PDF</Btn>
+          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "pdf"; templateRef.current?.click(); }}>Load template + export PDF</Btn>
+          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "xlsx"; templateRef.current?.click(); }}>Load template + export Excel</Btn>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">Templates save cycle, data type, graph settings, and parameter aliases—not uploaded Excel contents. You can move the JSON template between machines.</p>
         <div className="grid gap-2 md:grid-cols-[1fr_1.4fr_auto]">
