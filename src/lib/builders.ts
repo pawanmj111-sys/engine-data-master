@@ -230,7 +230,7 @@ export function exportCyclicWorkbook(s: S) {
   reportSheet["!cols"] = Array.from({ length: reportColumnCount }, (_, index) => ({
     wch: index === 0 ? 28 : index === 1 ? 28 : Math.max(16, Math.min(32, cols[index]?.label.length + 4 || 18)),
   }));
-  const emissionsHeaderRow = 7 + metadataRows.length;
+  const emissionsHeaderRow = 6 + metadataRows.length;
   if (s.cyclicRecords.length && cols.length) {
     reportSheet["!autofilter"] = {
       ref: `A${emissionsHeaderRow + 1}:${XLSX.utils.encode_col(cols.length - 1)}${titleRows.length}`,
