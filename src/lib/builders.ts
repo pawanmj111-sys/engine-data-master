@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { buildFigure, figureToPng, plottedAoa, statsRows, STATS_HEAD } from "./figure";
 import type { Block, ReportDoc } from "./report";
 import { useApp, type FrontPage } from "./store";
@@ -90,3 +91,53 @@ export function buildCyclicReport(s: S): ReportDoc {
     blocks,
   };
 }
+
+export function exportCompareWorkbook(s: S) {
+  const wb = XLSX.utils.book_new();
+  const frontRows: (string | number)[][] = [
+    [s.cycle === "FTP" ? "FTP Test Data Comparison Report" : s.compareFront.title],
+    ["Test Cycle", s.cycle],
+    ["Data type", s.dataType === "1hz" ? "1 Hz time-series data" : "Triggered / mode-wise data"],
+    [],
+    ["Front-page field", "Value"],
+    ...compareFrontFields(s),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(frontRows), "Front Page");
+
+  const datasetRows: (string | number)[][] = [
+    ["Display name", "Source file", "Version", "Sheet", "Header row", "Units row", "Rows", "Columns", "Loaded"],
+    ...s.datasets.map((d) => [d.name, d.fileName, d.version, d.sheet, d.headerRow, d.unitsRow, d.rows.length, d.headers.length, d.loadedAt]),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(datasetRows), "Datasets");
+
+  const used = new Set<string>(["Front Page", "Datasets"]);
+  const appendSheet = (requested: string, rows: unknown[][]) => {
+    const base = requested.replace(/[\\[\\]*?:/\\\\]/g, " ").trim().slice(0, 31) || "Sheet";
+    let name = base;
+    let number = 2;
+    while (used.has(name)) {
+      const suffix = " " + number++;
+      name = base.slice(0, 31 - suffix.length) + suffix;
+    }
+    used.add(name);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name);
+  };
+
+  for (const [index, graph] of s.graphs.entries()) {
+    const result = buildFigure(graph, s.datasets, s.dataType, false, s.parameterAliases);
+    const graphData = plottedAoa(result.analysis, graph, s.datasets);
+    appendSheet("Graph " + (index + 1) + " Data", graphData);
+    appendSheet("Graph " + (index + 1) + " Stats", [STATS_HEAD, ...statsRows(result.analysis, graph, s.datasets)]);
+    if (result.analysis.diffs.length) {
+      appendSheet("Graph " + (index + 1) + " Alignment", [
+        ["Difference", "Alignment method"],
+        ...result.analysis.diffs.map((diff) => [diff.label, diff.note]),
+      ]);
+    }
+    if (result.analysis.warnings.length) {
+      appendSheet("Graph " + (index + 1) + " Review", [["Review warning"], ...result.analysis.warnings.map((warning) => [warning])]);
+    }
+  }
+  XLSX.writeFile(wb, (s.cycle === "FTP" ? "FTP" : s.cycle) + "_comparison_report.xlsx");
+}
+
