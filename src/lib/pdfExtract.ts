@@ -139,11 +139,11 @@ export function parseSpecificResultsFromItems(
 
     // Some reports repeat the sensor/bench code elsewhere. Require the target code
     // on the same bench heading row, along with the full heading wording.
-    const benchRows = rows.filter((row) =>
+    const allBenchRows = rows.filter((row) =>
       /bench\s+results/i.test(row.text) &&
-      /not\s*[- ]?\s*driftcorrected/i.test(row.text) &&
-      targetLabel.test(row.text)
+      /not\s*[- ]?\s*driftcorrected/i.test(row.text)
     );
+    const benchRows = allBenchRows.filter((row) => targetLabel.test(row.text));
     if (!benchRows.length) continue;
 
     const specificHeadings = rows.filter((row) => /Specific\s+results/i.test(row.text));
@@ -151,10 +151,12 @@ export function parseSpecificResultsFromItems(
       const headingItem = heading.items.find((item) => /Specific/i.test(item.text));
       if (!headingItem) continue;
 
-      const bench = [...benchRows].sort((a, b) =>
+      // Associate each results table with the closest bench heading across the whole page.
+      // If EBH01 and EBH02 are both present, never borrow the other bench's table.
+      const nearestBench = [...allBenchRows].sort((a, b) =>
         Math.abs(a.y - heading.y) - Math.abs(b.y - heading.y)
       )[0];
-      if (!bench) continue;
+      if (!nearestBench || !targetLabel.test(nearestBench.text) || Math.abs(nearestBench.y - heading.y) > 120) continue;
 
       // Restrict the lower boundary search to the same right-hand table, not
       // a neighbouring Concentrations/Mass-results table.
@@ -174,9 +176,7 @@ export function parseSpecificResultsFromItems(
 
       const values = valuesFromSpecificRows(specificRows, definitions);
       if (Object.keys(values).length > 0) {
-        // Bench is intentionally selected before row parsing so this table is
-        // only accepted when a matching EBH01/EBH02 heading exists on this page.
-        void bench;
+        // The nearest heading was verified against the requested EBH01/EBH02 target.
         return values;
       }
     }
