@@ -58,11 +58,21 @@ function Compare() {
 
   const loadTemplate = async (file: File) => {
     try {
-      const parsed = JSON.parse(await file.text()) as Record<string, any>;
+      const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
       if (parsed.format !== "EngineDataMasterGraphTemplate" || parsed.version !== 1 || !Array.isArray(parsed.graphs)) {
         throw new Error("This is not a supported Engine Data Master template.");
       }
-      const validGraphs = parsed.graphs.filter((g: any) => g && typeof g.title === "string" && typeof g.xCol === "string" && Array.isArray(g.yCols)) as GraphConfig[];
+      const validGraphs = parsed.graphs.filter((candidate): candidate is GraphConfig => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+        const graph = candidate as Partial<GraphConfig>;
+        return typeof graph.title === "string" &&
+          typeof graph.xCol === "string" &&
+          Array.isArray(graph.yCols) &&
+          Array.isArray(graph.datasetIds) &&
+          typeof graph.subtitle === "string" &&
+          typeof graph.xLabel === "string" &&
+          typeof graph.yLabel === "string";
+      });
       if (!validGraphs.length) throw new Error("No valid graph configurations were found in this template.");
       const graphs = validGraphs.map((graph) => ({
         ...graph,
