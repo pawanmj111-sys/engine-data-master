@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFromLines } from "./pdfExtract";
+import { extractFromLines, parseEngineOutSpecificResultsFromItems, type PositionedPdfTextItem } from "./pdfExtract";
 
 const reportLines = [
   "Test cycle NRTC",
@@ -69,6 +69,55 @@ describe("Stage V PDF extraction", () => {
       "NO: 1.747 g/kWh",
       "O2: 1368.425 g/kWh",
     ]) expect(details).toContain(expected);
+  });
+
+  it("uses PDF item coordinates to read only the EngineOut Specific results column", () => {
+    const items: PositionedPdfTextItem[] = [
+      { page: 10, x: 10, y: 780, text: "EngineOut (EBH01) bench results - not driftcorrected" },
+      { page: 10, x: 534, y: 730, text: "Specific results" },
+      { page: 10, x: 7, y: 500, text: "Fuel consumption" },
+      { page: 10, x: 275, y: 712, text: "CH4" },
+      { page: 10, x: 330, y: 712, text: "999.999" },
+      { page: 10, x: 538, y: 712, text: "CH4" },
+      { page: 10, x: 580, y: 712, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 712, text: "-0.009" },
+      { page: 10, x: 538, y: 702, text: "CO2" },
+      { page: 10, x: 580, y: 702, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 702, text: "963.382" },
+      { page: 10, x: 538, y: 692, text: "COH" },
+      { page: 10, x: 580, y: 692, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 692, text: "3.919" },
+      { page: 10, x: 538, y: 682, text: "CO (COH - EngineOut)" },
+      { page: 10, x: 580, y: 682, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 682, text: "3.919" },
+      { page: 10, x: 538, y: 672, text: "THC" },
+      { page: 10, x: 580, y: 672, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 672, text: "1.006" },
+      { page: 10, x: 538, y: 662, text: "NO2 (NOX,NO - EngineOut)" },
+      { page: 10, x: 580, y: 662, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 662, text: "0.595" },
+      { page: 10, x: 538, y: 652, text: "NOX" },
+      { page: 10, x: 580, y: 652, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 652, text: "3.244" },
+      { page: 10, x: 538, y: 642, text: "NO" },
+      { page: 10, x: 580, y: 642, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 642, text: "1.747" },
+      { page: 10, x: 538, y: 632, text: "O2" },
+      { page: 10, x: 580, y: 632, text: "[g/kWh]" },
+      { page: 10, x: 630, y: 632, text: "1368.425" },
+    ];
+
+    const values = parseEngineOutSpecificResultsFromItems(items);
+    expect(values.engineOutCH4).toBe("-0.009");
+    expect(values.engineOutCO2).toBe("963.382");
+    expect(values.engineOutCOH).toBe("3.919");
+    expect(values.engineOutCO).toBe("3.919");
+    expect(values.engineOutTHC).toBe("1.006");
+    expect(values.engineOutNO2).toBe("0.595");
+    expect(values.engineOutNOX).toBe("3.244");
+    expect(values.engineOutNO).toBe("1.747");
+    expect(values.engineOutO2).toBe("1368.425");
+    expect(values.engineOutCH4).not.toBe("999.999");
   });
 
   it("does not invent values when there is no Stage V table", () => {
