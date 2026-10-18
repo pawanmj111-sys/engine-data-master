@@ -120,10 +120,10 @@ function parseSpecificResults(lines: string[]) {
   if (start < 0 || !lines.slice(Math.max(0, start - 12), start).some((line) => /EngineOut/i.test(line))) return "";
   const section = lines.slice(start, start + 55);
   const defs: { label: string; re: RegExp }[] = [
-    { label: "CH4", re: /\bCH4\b/i }, { label: "CO2", re: /\bCO2\b/i },
-    { label: "COH", re: /\bCOH\b/i }, { label: "CO (COH - EngineOut)", re: /\bCO\b(?!2|H)/i },
-    { label: "THC", re: /\bTHC\b/i }, { label: "NO2 (NOX,NO - EngineOut)", re: /\bNO2\b/i },
-    { label: "NOX", re: /\bNOX\b/i }, { label: "NO", re: /\bNO\b(?![A-Z0-9])/i }, { label: "O2", re: /\bO2\b/i },
+    { label: "CH4", re: /^\s*CH4\b/i }, { label: "CO2", re: /^\s*CO2\b/i },
+    { label: "COH", re: /^\s*COH\b/i }, { label: "CO (COH - EngineOut)", re: /^\s*CO\b(?!2|H)/i },
+    { label: "THC", re: /^\s*THC\b/i }, { label: "NO2 (NOX,NO - EngineOut)", re: /^\s*NO2\b/i },
+    { label: "NOX", re: /^\s*NOX\b/i }, { label: "NO", re: /^\s*NO\b(?![A-Z0-9])/i }, { label: "O2", re: /^\s*O2\b/i },
   ];
   const out: string[] = [];
   for (const def of defs) {
