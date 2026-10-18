@@ -170,6 +170,7 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
 
   const values: Record<string, string> = {};
   const details: string[] = [];
+  const limitParts: string[] = [];
   let parsedSummaryRows = 0;
   if (best && best.rowCount > 0) {
     for (const def of SUMMARY_POLLUTANTS) {
@@ -177,7 +178,10 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
       if (!row) continue;
       parsedSummaryRows++;
       if (row.actual) values[row.def.actualKey] = row.actual;
-      if (row.limit) values[row.def.actualKey + "Limit"] = row.limit;
+      if (row.limit) {
+        values[row.def.actualKey + "Limit"] = row.limit;
+        limitParts.push(row.def.label + " ≤ " + row.limit);
+      }
       if (row.status) values[row.def.actualKey + "Status"] = row.status;
       if (row.samplePoint) values[row.def.actualKey + "SamplePoint"] = row.samplePoint;
       if (row.device) values[row.def.actualKey + "Device"] = row.device;
@@ -194,8 +198,8 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
 
   if (details.length) {
     values.emissionLimitDetails = details.join("\n");
-    const joined = best!.section.join(" ");
-    const overall = /\boverall\s+status\s*[:\-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)/i.exec(joined);
+    if (limitParts.length) values.limits = limitParts.join("; ");
+    const overall = /\boverall\s+status\s*[:\-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)/i.exec(full);
     if (overall) values.result = /^P/i.test(overall[1]) ? "Pass" : "Fail";
     else {
       const firstRow = best!.section.findIndex((line) => SUMMARY_POLLUTANTS.some((p) => p.re.test(line)));
