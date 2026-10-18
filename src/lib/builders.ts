@@ -75,6 +75,32 @@ export function buildCyclicReport(s: S): ReportDoc {
     body: s.cyclicRecords.map((r, i) => cols.map((c) => (c.key === "sn" ? r.values.sn || String(i + 1) : r.values[c.key] ?? ""))),
   });
   blocks.push({ type: "text", small: true, text: "Blank cells indicate values not found in the source report. No values, limits or results have been inferred." });
+  const engineOutKeys = [
+    ["engineOutCH4", "CH4 [g/kWh]"],
+    ["engineOutCO2", "CO2 [g/kWh]"],
+    ["engineOutCOH", "COH [g/kWh]"],
+    ["engineOutCO", "CO (COH - EngineOut) [g/kWh]"],
+    ["engineOutTHC", "THC [g/kWh]"],
+    ["engineOutNO2", "NO2 (NOX,NO - EngineOut) [g/kWh]"],
+    ["engineOutNOX", "NOX [g/kWh]"],
+    ["engineOutNO", "NO [g/kWh]"],
+    ["engineOutO2", "O2 [g/kWh]"],
+  ] as const;
+  const engineOutRecords = s.cyclicRecords.filter((record) =>
+    engineOutKeys.some(([key]) => Boolean(record.values[key])),
+  );
+  if (engineOutRecords.length) {
+    blocks.push({ type: "heading", text: "EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1" });
+    blocks.push({
+      type: "table",
+      head: ["Source PDF", ...engineOutKeys.map(([, label]) => label)],
+      body: engineOutRecords.map((record) => [
+        record.source,
+        ...engineOutKeys.map(([key]) => record.values[key] ?? ""),
+      ]),
+      small: true,
+    });
+  }
   blocks.push({ type: "heading", text: "Source reports and extraction status" });
   blocks.push({
     type: "table",
