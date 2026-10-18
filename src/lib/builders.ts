@@ -205,25 +205,45 @@ export function exportCyclicWorkbook(s: S) {
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
 
-  // Cover sheet follows the report front-page layout: report name, cycle subtitle,
-  // then the editable front-page fields configured in the PDF Cyclic Summary module.
-  const frontRows: unknown[][] = [
+  const cols = s.cyclicColumns.filter((column) => column.visible);
+  const metadataRows = visibleFields(s.cyclicFront);
+  const emittedRows = s.cyclicRecords.map((record, index) =>
+    cols.map((column) => column.key === "sn" ? record.values.sn || String(index + 1) : record.values[column.key] ?? ""),
+  );
+  const reportColumnCount = Math.max(2, cols.length);
+  const titleRows: unknown[][] = [
     [s.cyclicFront.title || "Cyclic Emission Summary Report"],
     [`${s.cyclicCycle} Cyclic Emission Results`],
     [],
     ["Report field", "Value"],
-    ...visibleFields(s.cyclicFront),
+    ...metadataRows,
+    [],
+    [],
+    cols.map((column) => column.label),
+    ...emittedRows,
   ];
-  addSheet("Front Page", frontRows, [30, 48]);
+  const reportSheet = XLSX.utils.aoa_to_sheet(titleRows);
+  reportSheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: reportColumnCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: reportColumnCount - 1 } },
+  ];
+  reportSheet["!cols"] = Array.from({ length: reportColumnCount }, (_, index) => ({
+    wch: index === 0 ? 28 : index === 1 ? 28 : Math.max(16, Math.min(32, cols[index]?.label.length + 4 || 18)),
+  }));
+  const emissionsHeaderRow = 7 + metadataRows.length;
+  if (s.cyclicRecords.length && cols.length) {
+    reportSheet["!autofilter"] = {
+      ref: `A${emissionsHeaderRow + 1}:${XLSX.utils.encode_col(cols.length - 1)}${titleRows.length}`,
+    };
+  }
+  XLSX.utils.book_append_sheet(wb, reportSheet, "Cyclic Report");
 
-  const cols = s.cyclicColumns.filter((column) => column.visible);
+  // Separate structured data tab makes filtering and downstream analysis convenient.
   const summaryRows: unknown[][] = [
     [`${s.cyclicCycle} Cyclic Emission Results`],
     [`Units: ${s.cyclicUnits || "as shown in source report"}`],
     cols.map((column) => column.label),
-    ...s.cyclicRecords.map((record, index) =>
-      cols.map((column) => column.key === "sn" ? record.values.sn || String(index + 1) : record.values[column.key] ?? ""),
-    ),
+    ...emittedRows,
   ];
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
   summarySheet["!cols"] = cols.map((column) => ({ wch: Math.max(14, Math.min(32, column.label.length + 4)) }));
