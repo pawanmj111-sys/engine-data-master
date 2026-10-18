@@ -35,9 +35,24 @@ function inRange(x: Cell, lo: number | null, hi: number | null) {
   return (lo === null || n >= lo) && (hi === null || n <= hi);
 }
 
-export function getSeries(ds: Dataset, g: GraphConfig, col: string): Series | null {
-  const xi = ds.headers.indexOf(g.xCol);
-  const yi = ds.headers.indexOf(col);
+export type ParameterAliases = Record<string, string[]>;
+
+export function resolveParameterHeader(
+  ds: Dataset,
+  selected: string,
+  aliases: ParameterAliases = {},
+): string | null {
+  const entry = Object.entries(aliases).find(([canonical, names]) => canonical === selected || names.includes(selected));
+  const candidates = entry ? [...new Set([entry[0], ...entry[1]])] : [selected];
+  return candidates.find((name) => ds.headers.includes(name)) ?? null;
+}
+
+export function getSeries(ds: Dataset, g: GraphConfig, col: string, aliases: ParameterAliases = {}): Series | null {
+  const xHeader = resolveParameterHeader(ds, g.xCol, aliases);
+  const yHeader = resolveParameterHeader(ds, col, aliases);
+  if (!xHeader || !yHeader) return null;
+  const xi = ds.headers.indexOf(xHeader);
+  const yi = ds.headers.indexOf(yHeader);
   if (xi < 0 || yi < 0) return null;
   const lo = g.rangeMin.trim() === "" ? null : Number(g.rangeMin);
   const hi = g.rangeMax.trim() === "" ? null : Number(g.rangeMax);
@@ -150,24 +165,28 @@ export interface GraphAnalysis {
   warnings: string[];
 }
 
-export function analyzeGraph(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz"): GraphAnalysis {
+export function analyzeGraph(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz", aliases: ParameterAliases = {}): GraphAnalysis {
   const warnings: string[] = [];
   const dss = g.datasetIds.map((id) => datasets.find((d) => d.id === id)).filter(Boolean) as Dataset[];
   const series: Series[] = [];
   if (!g.xCol) warnings.push("Select an X-axis parameter.");
   for (const ds of dss) {
-    if (g.xCol && !ds.headers.includes(g.xCol))
-      warnings.push(`X-axis "${g.xCol}" not found in "${ds.name}" (v${ds.version}). Select a replacement parameter.`);
+    if (g.xCol && !resolveParameterHeader(ds, g.xCol, aliases))
+      warnings.push(`X-axis "${g.xCol}" not found in "${ds.name}" (v${ds.version}). Add a parameter mapping or select a replacement.`);
+    else if (g.xCol && resolveParameterHeader(ds, g.xCol, aliases) !== g.xCol)
+      warnings.push(`X-axis "${g.xCol}" uses mapped column "${resolveParameterHeader(ds, g.xCol, aliases)}" in "${ds.name}".`);
     for (const col of g.yCols) {
-      if (!ds.headers.includes(col)) {
-        warnings.push(`Parameter "${col}" not found in "${ds.name}" (v${ds.version}). Select a replacement parameter.`);
+      const resolved = resolveParameterHeader(ds, col, aliases);
+      if (!resolved) {
+        warnings.push(`Parameter "${col}" not found in "${ds.name}" (v${ds.version}). Add a parameter mapping or select a replacement.`);
         continue;
       }
-      const s = getSeries(ds, g, col);
+      if (resolved !== col) warnings.push(`Parameter "${col}" uses mapped column "${resolved}" in "${ds.name}".`);
+      const s = getSeries(ds, g, col, aliases);
       if (s) series.push(s);
     }
-    if (dataType === "1hz" && g.xCol && ds.headers.includes(g.xCol)) {
-      const xi = ds.headers.indexOf(g.xCol);
+    if (dataType === "1hz" && g.xCol && resolveParameterHeader(ds, g.xCol, aliases)) {
+      const xi = ds.headers.indexOf(resolveParameterHeader(ds, g.xCol, aliases)!);
       const t = checkTime(ds.rows.map((r) => r[xi]));
       const parts: string[] = [];
       if (t.missing) parts.push(`${t.missing} missing timestamps`);
