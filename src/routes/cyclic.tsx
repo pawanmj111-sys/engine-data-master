@@ -37,7 +37,19 @@ function Cyclic() {
   const [open, setOpen] = useState("");
   const cols = s.cyclicColumns;
   const setVal = (id: string, k: string, v: string) =>
-    s.set({ cyclicRecords: s.cyclicRecords.map((r) => (r.id === id ? { ...r, values: { ...r.values, [k]: v } } : r)) });
+    s.set({
+      cyclicRecords: s.cyclicRecords.map((record) => {
+        if (record.id !== id) return record;
+        const values = { ...record.values, [k]: v };
+        if (ENGINE_OUT_FIELDS.some((field) => field.key === k)) {
+          values.engineOutDetails = ENGINE_OUT_FIELDS
+            .filter((field) => values[field.key] !== undefined)
+            .map((field) => field.label + ": " + values[field.key] + " g/kWh")
+            .join("\n");
+        }
+        return { ...record, values };
+      }),
+    });
 
   const onFiles = async (files: FileList | null) => {
     setBusy(true);
