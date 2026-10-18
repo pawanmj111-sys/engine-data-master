@@ -30,7 +30,7 @@ export async function buildCompareReport(s: S): Promise<ReportDoc> {
     body: s.datasets.map((d) => [d.name, d.fileName, `v${d.version}`, d.sheet, String(d.headerRow), String(d.rows.length), String(d.headers.length), d.loadedAt]),
   });
   for (const g of s.graphs) {
-    const fig = buildFigure(g, s.datasets, s.dataType, false);
+    const fig = buildFigure(g, s.datasets, s.dataType, false, s.parameterAliases);
     blocks.push({ type: "pagebreak" });
     blocks.push({ type: "heading", text: g.title });
     if (fig.data.length) {
