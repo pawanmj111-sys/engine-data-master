@@ -193,3 +193,103 @@ export function exportCompareWorkbook(s: S) {
   XLSX.writeFile(wb, (s.cycle === "FTP" ? "FTP" : s.cycle) + "_comparison_report.xlsx");
 }
 
+export function exportCyclicWorkbook(s: S) {
+  const wb = XLSX.utils.book_new();
+
+  const addSheet = (name: string, rows: unknown[][], widths?: number[]) => {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (widths) ws["!cols"] = widths.map((wch) => ({ wch }));
+    if (rows.length > 2 && rows[2]?.length) {
+      ws["!autofilter"] = { ref: `A3:${XLSX.utils.encode_col(rows[2].length - 1)}${rows.length}` };
+    }
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+
+  // Cover sheet follows the report front-page layout: report name, cycle subtitle,
+  // then the editable front-page fields configured in the PDF Cyclic Summary module.
+  const frontRows: unknown[][] = [
+    [s.cyclicFront.title || "Cyclic Emission Summary Report"],
+    [`${s.cyclicCycle} Cyclic Emission Results`],
+    [],
+    ["Report field", "Value"],
+    ...visibleFields(s.cyclicFront),
+  ];
+  addSheet("Front Page", frontRows, [30, 48]);
+
+  const cols = s.cyclicColumns.filter((column) => column.visible);
+  const summaryRows: unknown[][] = [
+    [`${s.cyclicCycle} Cyclic Emission Results`],
+    [`Units: ${s.cyclicUnits || "as shown in source report"}`],
+    cols.map((column) => column.label),
+    ...s.cyclicRecords.map((record, index) =>
+      cols.map((column) => column.key === "sn" ? record.values.sn || String(index + 1) : record.values[column.key] ?? ""),
+    ),
+  ];
+  const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+  summarySheet["!cols"] = cols.map((column) => ({ wch: Math.max(14, Math.min(32, column.label.length + 4)) }));
+  if (s.cyclicRecords.length) summarySheet["!autofilter"] = {
+    ref: `A3:${XLSX.utils.encode_col(Math.max(0, cols.length - 1))}${summaryRows.length}`,
+  };
+  XLSX.utils.book_append_sheet(wb, summarySheet, "Cyclic Summary");
+
+  const engineOutKeys = [
+    ["engineOutCH4", "CH4 [g/kWh]"],
+    ["engineOutCO2", "CO2 [g/kWh]"],
+    ["engineOutCOH", "COH [g/kWh]"],
+    ["engineOutCO", "CO (COH - EngineOut) [g/kWh]"],
+    ["engineOutTHC", "THC [g/kWh]"],
+    ["engineOutNO2", "NO2 (NOX,NO - EngineOut) [g/kWh]"],
+    ["engineOutNOX", "NOX [g/kWh]"],
+    ["engineOutNO", "NO [g/kWh]"],
+    ["engineOutO2", "O2 [g/kWh]"],
+  ] as const;
+  const engineOutRecords = s.cyclicRecords.filter((record) =>
+    engineOutKeys.some(([key]) => record.values[key] !== undefined && record.values[key] !== ""),
+  );
+  if (engineOutRecords.length) {
+    addSheet("EngineOut EBH01", [
+      ["EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1"],
+      [],
+      ["Source PDF", "Test ID", "Date", ...engineOutKeys.map(([, label]) => label)],
+      ...engineOutRecords.map((record) => [
+        record.source, record.values.testId ?? "", record.values.date ?? "",
+        ...engineOutKeys.map(([key]) => record.values[key] ?? ""),
+      ]),
+    ], [42, 20, 16, ...engineOutKeys.map(() => 22)]);
+  }
+
+  const tailpipeKeys = [
+    ["tailpipeCH4", "CH4 [g/kWh]"],
+    ["tailpipeCO2", "CO2 [g/kWh]"],
+    ["tailpipeCOL", "COL [g/kWh]"],
+    ["tailpipeCO", "CO (COL - Tailpipe) [g/kWh]"],
+    ["tailpipeTHC", "THC [g/kWh]"],
+    ["tailpipeNO2", "NO2 (NOX,NO - Tailpipe) [g/kWh]"],
+    ["tailpipeNOX", "NOX [g/kWh]"],
+    ["tailpipeNO", "NO [g/kWh]"],
+    ["tailpipeO2", "O2 [g/kWh]"],
+  ] as const;
+  const tailpipeRecords = s.cyclicRecords.filter((record) =>
+    tailpipeKeys.some(([key]) => record.values[key] !== undefined && record.values[key] !== ""),
+  );
+  if (tailpipeRecords.length) {
+    addSheet("Tailpipe EBH02", [
+      ["Tailpipe (EBH02) bench results — not driftcorrected · Specific results Phase 1"],
+      [],
+      ["Source PDF", "Test ID", "Date", ...tailpipeKeys.map(([, label]) => label)],
+      ...tailpipeRecords.map((record) => [
+        record.source, record.values.testId ?? "", record.values.date ?? "",
+        ...tailpipeKeys.map(([key]) => record.values[key] ?? ""),
+      ]),
+    ], [42, 20, 16, ...tailpipeKeys.map(() => 22)]);
+  }
+
+  addSheet("Extraction Review", [
+    ["S. No.", "Source PDF", "Status", "Notes / remarks", "Raw extracted section"],
+    ...s.cyclicRecords.map((record, index) => [
+      String(index + 1), record.source, record.status, record.message, record.sectionText,
+    ]),
+  ], [10, 42, 16, 70, 100]);
+
+  XLSX.writeFile(wb, `${s.cyclicCycle}_cyclic_emission_summary.xlsx`);
+}
