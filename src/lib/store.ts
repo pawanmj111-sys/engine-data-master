@@ -118,6 +118,7 @@ export const DEFAULT_CYCLIC_COLUMNS: CyclicColumn[] = [
   { key: "testId", label: "Test ID", visible: true },
   { key: "testName", label: "Test Name", visible: true },
   { key: "engine", label: "Engine Model / No.", visible: true },
+  { key: "noxHc", label: "NOx+HC", visible: true },
   { key: "noxThc", label: "NOx+THC", visible: false },
   { key: "nox", label: "NOx", visible: true },
   { key: "hc", label: "THC / HC", visible: true },
