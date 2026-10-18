@@ -198,8 +198,12 @@ function parseNamedRow(text: string, def: SummaryPollutant, allDefs: SummaryPoll
   const limit = limitMatch?.[1] ? normNum(limitMatch[1]) : allNums[1] ?? "";
   if (!actual && !limit) return null;
   const statusMatch = /\b(PASS(?:ED)?|FAIL(?:ED)?)\b/i.exec(block);
-  const sampleMatch = /\bSample\s*point\s*[:=]?\s*(.+?)(?=\s+Device\b|$)/i.exec(block);
-  const deviceMatch = /\bDevice\s*[:=]?\s*([^\s,;]+)/i.exec(block);
+  const explicitSampleMatch = /\bSample\s*point\s*[:=]?\s*(.+?)(?=\s+Device\b|$)/i.exec(block);
+  const explicitDeviceMatch = /\bDevice\s*[:=]?\s*([^\s,;]+)/i.exec(block);
+  const afterStatus = statusMatch ? block.slice(statusMatch.index + statusMatch[0].length).trim() : "";
+  const trailingColumns = afterStatus.replace(/^Sample\s*point\s*[:=]?\s*/i, "").replace(/^Device\s*[:=]?\s*/i, "").split(/\s+/).filter(Boolean);
+  const sampleMatch = explicitSampleMatch ?? (trailingColumns.length >= 2 ? [trailingColumns[0]] as unknown as RegExpExecArray : null);
+  const deviceMatch = explicitDeviceMatch ?? (trailingColumns.length >= 2 ? [trailingColumns[1]] as unknown as RegExpExecArray : null);
   return {
     def, actual, limit,
     status: statusMatch ? (/^P/i.test(statusMatch[1]) ? "Passed" : "Failed") : "",
