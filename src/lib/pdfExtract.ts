@@ -325,7 +325,9 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
   values.date = grab(/\b(?:Test\s*)?Date\s*[:-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
   values.testId = grab(/Test\s*(?:ID|No\.?|Number)\s*[:-]?\s*([A-Za-z0-9_./-]+)/i);
   values.testName = grab(/Test\s*Name\s*[:-]\s*(.+?)(?:\s{2,}|$)/i);
-  values.engine = grab(/Engine\s*(?:Model|Type|No\.?|Number|S\/N|Serial)\s*[:-]?\s*(.+?)(?:\s{2,}|$)/i);
+  values.engineModel = grab(/Engine\s+(?:model|family)\s+(?:\[[^\]]+\]\s*)?([A-Za-z0-9_./-]+)/i);
+  values.engineNumber = grab(/Engine\s+(?:number|no\.?)\s+(?:\[[^\]]+\]\s*)?([A-Za-z0-9_./-]+)/i);
+  values.engine = values.engineModel || values.engineNumber || grab(/Engine\s*(?:Model|Type|No\.?|Number|S\/N|Serial)\s*[:-]?\s*(.+?)(?:\s{2,}|$)/i);
   Object.assign(rec.values, values);
 
   const cycles = ["NRTC", "NRSC", "RMC"] as const;
