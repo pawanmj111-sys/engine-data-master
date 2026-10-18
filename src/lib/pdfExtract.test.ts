@@ -3,6 +3,9 @@ import { extractFromLines, parseEngineOutSpecificResultsFromItems, type Position
 
 const reportLines = [
   "Test cycle NRTC",
+  "Test date/time 2025/08/18 14:48:08",
+  "Engine family [-] EC3.139TCI_STG-V",
+  "Engine number [-] E2467585",
   "Overall status: Failed",
   "Emission limits - Stage V NRE (NRE-v-3/NRE-c-3)",
   "CO uncorrected [g/kWh] 0.286 5.000 Passed Tailpipe EBH02",
@@ -51,6 +54,9 @@ describe("Stage V PDF extraction", () => {
     expect(rec.values.pnSamplePoint).toBe("SPC47x");
     expect(rec.values.pnDevice).toBe("AVL489");
     expect(rec.values.result).toBe("Fail");
+    expect(rec.values.date).toBe("2025/08/18");
+    expect(rec.values.engineModel).toBe("EC3.139TCI_STG-V");
+    expect(rec.values.engineNumber).toBe("E2467585");
     expect(rec.values.limits).toContain("Particulate number ≤ 1.00E+012");
   });
 
