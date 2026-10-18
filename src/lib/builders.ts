@@ -138,7 +138,7 @@ export function exportCompareWorkbook(s: S) {
 
   const used = new Set<string>(["Front Page", "Datasets"]);
   const appendSheet = (requested: string, rows: unknown[][]) => {
-    const base = requested.replace(/[\[\]*?:\/\\]/g, " ").trim().slice(0, 31) || "Sheet";
+    const base = requested.split("").map((char) => "[]:*?/\\\\".includes(char) ? " " : char).join("").trim().slice(0, 31) || "Sheet";
     let name = base;
     let number = 2;
     while (used.has(name)) {
