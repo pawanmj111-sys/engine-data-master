@@ -115,6 +115,7 @@ function RootComponent() {
   });
   const [licenseText, setLicenseText] = useState("");
   const [licenseBusy, setLicenseBusy] = useState(false);
+  const [licenseScreenOpen, setLicenseScreenOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -148,6 +149,7 @@ function RootComponent() {
       setLicenseState(state);
       if (state.status === "valid") {
         window.localStorage.setItem(LICENSE_STORAGE_KEY, licenseText.trim());
+        setLicenseScreenOpen(false);
       }
     } catch {
       setLicenseState({ status: "invalid", message: "The license could not be saved. Please try again." });
@@ -160,7 +162,7 @@ function RootComponent() {
     return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">Checking EngineLab license…</div>;
   }
 
-  if (licenseState.status !== "valid") {
+  if (licenseState.status !== "valid" || licenseScreenOpen) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
         <div className="w-full max-w-xl rounded-xl border bg-card p-6 shadow-sm md:p-8">
@@ -197,7 +199,9 @@ function RootComponent() {
             className="mt-2 w-full rounded-md border bg-background p-3 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
           />
           <p role="status" className={`mt-3 text-sm ${licenseState.status === "invalid" || licenseState.status === "expired" ? "text-destructive" : "text-muted-foreground"}`}>
-            {licenseState.message}
+            {licenseState.status === "valid"
+              ? `Current license: ${licenseState.license.customer} · expires ${new Date(licenseState.license.expiresAt).toLocaleDateString()}.`
+              : licenseState.message}
           </p>
           <button
             type="button"
@@ -207,6 +211,18 @@ function RootComponent() {
           >
             {licenseBusy ? "Verifying…" : "Activate license"}
           </button>
+          {licenseScreenOpen && licenseState.status === "valid" && (
+            <button
+              type="button"
+              onClick={() => {
+                setLicenseText(window.localStorage.getItem(LICENSE_STORAGE_KEY) ?? "");
+                setLicenseScreenOpen(false);
+              }}
+              className="mt-4 ml-2 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold"
+            >
+              Back to EngineLab
+            </button>
+          )}
           <p className="mt-5 text-xs text-muted-foreground">Contact your EngineLab license administrator for a new or renewed license file.</p>
         </div>
       </div>
@@ -228,6 +244,16 @@ function RootComponent() {
                 Licensed to {licenseState.license.customer}
                 <br />
                 Expires {new Date(licenseState.license.expiresAt).toLocaleDateString()}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLicenseText(window.localStorage.getItem(LICENSE_STORAGE_KEY) ?? "");
+                    setLicenseScreenOpen(true);
+                  }}
+                  className="mt-1 block rounded border border-sidebar-border px-2 py-1 text-[10px] text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                >
+                  Manage / renew license
+                </button>
               </div>
             </div>
             <nav className="flex flex-col gap-0.5 p-2">
@@ -248,6 +274,16 @@ function RootComponent() {
           </aside>
           <div className="min-w-0 flex-1">
             <nav className="flex gap-1 overflow-x-auto border-b bg-sidebar p-2 md:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  setLicenseText(window.localStorage.getItem(LICENSE_STORAGE_KEY) ?? "");
+                  setLicenseScreenOpen(true);
+                }}
+                className="whitespace-nowrap rounded border border-sidebar-border px-2 py-1 text-xs text-sidebar-foreground"
+              >
+                License
+              </button>
               {NAV.map((n) => (
                 <Link key={n.to} to={n.to} className="whitespace-nowrap rounded px-2 py-1 text-xs text-sidebar-foreground" activeProps={{ className: "bg-sidebar-accent" }}>
                   {n.label}
