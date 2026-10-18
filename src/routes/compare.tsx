@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useApp, type GraphConfig } from "@/lib/store";
+import { useApp, uid, type GraphConfig } from "@/lib/store";
 import { readFileSheets } from "@/lib/parse";
 import { buildFigure, exportGraphData, figureToPng, safe, statsRows, STATS_HEAD, traceStyle } from "@/lib/figure";
 import { downloadDataUrl } from "@/lib/report";
@@ -25,7 +25,10 @@ export const Route = createFileRoute("/compare")({
 function Compare() {
   const s = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
-  const allHeaders = useMemo(() => [...new Set(s.datasets.flatMap((d) => d.headers))], [s.datasets]);
+  const templateRef = useRef<HTMLInputElement>(null);
+  const [aliasCanonical, setAliasCanonical] = useState("");
+  const [aliasSynonyms, setAliasSynonyms] = useState("");
+  const allHeaders = useMemo(() => [...new Set([...s.datasets.flatMap((d) => d.headers), ...Object.keys(s.parameterAliases)])], [s.datasets, s.parameterAliases]);
   const g = s.graphs.find((x) => x.id === s.activeGraph) ?? s.graphs[0];
 
   const onFiles = async (files: FileList | null) => {
@@ -33,6 +36,78 @@ function Compare() {
       try { s.addDataset(f.name, await readFileSheets(f)); toast.success(`Loaded ${f.name}`); }
       catch (e) { toast.error(`${f.name}: ${(e as Error).message}`); }
     }
+  };
+
+  const saveTemplate = () => {
+    const payload = {
+      format: "EngineDataMasterGraphTemplate",
+      version: 1,
+      cycle: s.cycle,
+      dataType: s.dataType,
+      parameterAliases: s.parameterAliases,
+      graphs: s.graphs.map((graph) => ({ ...graph, datasetIds: [], refId: "", styles: {}, hidden: [] })),
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "engine-data-master-template.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Template saved as a JSON file. Dataset contents are not included.");
+  };
+
+  const loadTemplate = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, any>;
+      if (parsed.format !== "EngineDataMasterGraphTemplate" || parsed.version !== 1 || !Array.isArray(parsed.graphs)) {
+        throw new Error("This is not a supported Engine Data Master template.");
+      }
+      const validGraphs = parsed.graphs.filter((g: any) => g && typeof g.title === "string" && typeof g.xCol === "string" && Array.isArray(g.yCols)) as GraphConfig[];
+      if (!validGraphs.length) throw new Error("No valid graph configurations were found in this template.");
+      const graphs = validGraphs.map((graph) => ({
+        ...graph,
+        id: uid(),
+        datasetIds: s.datasets.map((d) => d.id),
+        refId: s.datasets[0]?.id ?? "",
+        styles: {},
+        hidden: [],
+      }));
+      const cycle = ["FTP", "NRTC", "NRSC", "RMC"].includes(parsed.cycle) ? parsed.cycle as typeof s.cycle : s.cycle;
+      const dataType = parsed.dataType === "triggered" ? "triggered" as const : "1hz" as const;
+      const aliases: Record<string, string[]> = {};
+      if (parsed.parameterAliases && typeof parsed.parameterAliases === "object" && !Array.isArray(parsed.parameterAliases)) {
+        for (const [key, value] of Object.entries(parsed.parameterAliases)) {
+          if (key.trim() && Array.isArray(value)) aliases[key] = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+        }
+      }
+      s.set({ cycle, dataType, graphs, activeGraph: graphs[0].id, parameterAliases: aliases });
+      window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(aliases));
+      toast.success(`Loaded ${graphs.length} graph configuration(s). Check any parameter-mapping warnings for the selected datasets.`);
+    } catch (e) {
+      toast.error((e as Error).message || "Could not load template.");
+    }
+  };
+
+  const saveAlias = () => {
+    const canonical = aliasCanonical.trim();
+    const alternatives = [...new Set(aliasSynonyms.split(",").map((v) => v.trim()).filter((v) => v && v !== canonical))];
+    if (!canonical || !alternatives.length) {
+      toast.error("Enter a canonical parameter and at least one alternate column name.");
+      return;
+    }
+    const next = { ...s.parameterAliases, [canonical]: alternatives };
+    s.set({ parameterAliases: next });
+    window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(next));
+    setAliasCanonical("");
+    setAliasSynonyms("");
+    toast.success(`Saved mapping for ${canonical}.`);
+  };
+
+  const removeAlias = (canonical: string) => {
+    const next = { ...s.parameterAliases };
+    delete next[canonical];
+    s.set({ parameterAliases: next });
+    window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(next));
   };
 
   return (
@@ -64,7 +139,26 @@ function Compare() {
         )}
       </Panel>
 
-      <Panel title="4 · Graphs" actions={<>
+      <Panel title="4 · Reusable templates & parameter mappings">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Btn variant="primary" disabled={!s.graphs.length} onClick={saveTemplate}>Save graph template (JSON)</Btn>
+          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file); e.target.value = ""; }} />
+          <Btn onClick={() => templateRef.current?.click()}>Load template</Btn>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">Templates save cycle, data type, graph settings, and parameter aliases—not uploaded Excel contents. You can move the JSON template between machines.</p>
+        <div className="grid gap-2 md:grid-cols-[1fr_1.4fr_auto]">
+          <Field label="Canonical parameter"><Inp value={aliasCanonical} placeholder="e.g. FC RATE" onChange={(e) => setAliasCanonical(e.target.value)} /></Field>
+          <Field label="Alternate Excel column names (comma-separated)"><Inp value={aliasSynonyms} placeholder="e.g. FB_VAL, Fuel Flow" onChange={(e) => setAliasSynonyms(e.target.value)} /></Field>
+          <div className="flex items-end"><Btn onClick={saveAlias}>Save mapping</Btn></div>
+        </div>
+        {Object.keys(s.parameterAliases).length > 0 && <div className="mt-3 space-y-1">
+          {Object.entries(s.parameterAliases).map(([canonical, aliases]) => <div key={canonical} className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1 text-xs">
+            <span><strong>{canonical}</strong> ↔ {aliases.join(", ")}</span><Btn onClick={() => removeAlias(canonical)}>Remove</Btn>
+          </div>)}
+        </div>}
+      </Panel>
+
+      <Panel title="5 · Graphs" actions={<>
         {s.graphs.map((x) => (
           <Btn key={x.id} variant={x.id === g?.id ? "primary" : "default"} onClick={() => s.set({ activeGraph: x.id })}>{x.title}</Btn>
         ))}
@@ -89,7 +183,7 @@ function Compare() {
 function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
   const s = useApp();
   const up = (p: Partial<GraphConfig>) => s.updateGraph(g.id, p);
-  const fig = useMemo(() => buildFigure(g, s.datasets, s.dataType), [g, s.datasets, s.dataType]);
+  const fig = useMemo(() => buildFigure(g, s.datasets, s.dataType, false, s.parameterAliases), [g, s.datasets, s.dataType, s.parameterAliases]);
   const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const keys = fig.analysis.series.map((x) => x.key);
 
