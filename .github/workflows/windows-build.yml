@@ -32,7 +32,7 @@ jobs:
       - name: Run unit tests
         run: bun run test
       - name: Run ESLint rules (exclude the existing repository-wide Prettier backlog)
-        run: bun x eslint . --rule 'prettier/prettier: off'
+        run: "bun x eslint . --rule 'prettier/prettier: off'"
       - name: Build web app
         run: bun run build
 
