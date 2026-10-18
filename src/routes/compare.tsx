@@ -206,12 +206,13 @@ function Compare() {
             <Btn disabled={!selectedCyclicRecord} onClick={() => {
               if (!selectedCyclicRecord) return;
               const record = selectedCyclicRecord;
+              const recordCycle = ["NRTC", "NRSC", "RMC"].includes(record.values.cycle) ? record.values.cycle as typeof s.cyclicCycle : s.cyclicCycle;
               const front = { ...s.compareFront, fields: [...s.compareFront.fields] };
               const imported: [string, string][] = [
                 ["Date", record.values.date ?? ""],
                 ["Engine Model", record.values.engineModel ?? record.values.engine ?? ""],
                 ["Engine Number", record.values.engineNumber ?? ""],
-                ["Test Cycle", s.cyclicCycle],
+                ["Test Cycle", recordCycle],
                 ["Test ID", record.values.testId ?? ""],
                 ["Test Name", record.values.testName ?? ""],
                 ["Test File Name", record.source],
@@ -230,7 +231,7 @@ function Compare() {
                 if (found >= 0) front.fields[found] = { ...front.fields[found], value, hidden: false };
                 else front.fields.push({ id: uid(), label, value, hidden: false, custom: true });
               }
-              s.set({ cycle: s.cyclicCycle, compareFront: front });
+              s.set({ cycle: recordCycle, compareFront: front });
               toast.success("PDF Cyclic Summary values copied to the Excel comparison front page. Review the fields before export.");
             }}>Use PDF summary on front page</Btn>
           </div>
