@@ -22,6 +22,8 @@ export function Plot({
         displaylogo: false,
         scrollZoom: true,
         modeBarButtonsToRemove: ["lasso2d", "select2d"],
+        modeBarButtonsToAdd: ["toggleSpikelines"],
+        edits: { shapePosition: true },
         toImageButtonOptions: { format: "png", width: 1600, height: 800, scale: 1 },
       });
       onReady?.(ref.current);
