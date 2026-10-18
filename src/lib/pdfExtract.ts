@@ -347,6 +347,7 @@ export async function extractPdf(file: File, cycle: CyclicCycle): Promise<Cyclic
     const record = extractFromLines(pdfData.lines, file.name, cycle);
     const engineOutValues = parseEngineOutSpecificResultsFromItems(pdfData.items);
     if (Object.keys(engineOutValues).length > 0) {
+      if (record.status !== "extracted") record.status = "extracted";
       Object.assign(record.values, engineOutValues);
       record.values.engineOutDetails = engineOutDetailsFromValues(engineOutValues);
       record.message = [record.message, "EngineOut (EBH01) bench results — Specific results Phase 1 extracted from the rightmost table using PDF text coordinates."]
