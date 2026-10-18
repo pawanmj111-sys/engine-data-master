@@ -6,6 +6,18 @@ import { extractPdf } from "@/lib/pdfExtract";
 import { Btn, Inp, PageHeader, Panel, Segmented, Field } from "@/components/kit";
 import { FrontEditor } from "@/components/FrontPageEditor";
 
+const ENGINE_OUT_FIELDS: { key: string; label: string }[] = [
+  { key: "engineOutCH4", label: "CH4" },
+  { key: "engineOutCO2", label: "CO2" },
+  { key: "engineOutCOH", label: "COH" },
+  { key: "engineOutCO", label: "CO (COH - EngineOut)" },
+  { key: "engineOutTHC", label: "THC" },
+  { key: "engineOutNO2", label: "NO2 (NOX,NO - EngineOut)" },
+  { key: "engineOutNOX", label: "NOX" },
+  { key: "engineOutNO", label: "NO" },
+  { key: "engineOutO2", label: "O2" },
+];
+
 export const Route = createFileRoute("/cyclic")({
   head: () => ({
     meta: [
@@ -75,7 +87,7 @@ function Cyclic() {
                     <button className="text-destructive" onClick={() => s.set({ cyclicRecords: s.cyclicRecords.filter((x) => x.id !== r.id) })}>Remove</button>
                   </td>
                 </tr>
-                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut EBH01 · Specific results Phase 1</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
+                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{ENGINE_OUT_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></details></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
               </>))}
             </tbody>
           </table>
