@@ -107,6 +107,27 @@ describe("Stage V PDF extraction", () => {
     expect(rec.values.tailpipeO2).toBe("1443.520");
   });
 
+  it("keeps EBH01 and EBH02 separate when both bench headings appear on one page", () => {
+    const items: PositionedPdfTextItem[] = [
+      { page: 12, x: 10, y: 780, text: "EngineOut (EBH01) bench results - not driftcorrected" },
+      { page: 12, x: 534, y: 730, text: "Specific results" },
+      { page: 12, x: 538, y: 712, text: "CH4" },
+      { page: 12, x: 580, y: 712, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 712, text: "-0.009" },
+      { page: 12, x: 10, y: 560, text: "Tailpipe (EBH02) bench results - not driftcorrected" },
+      { page: 12, x: 534, y: 530, text: "Specific results" },
+      { page: 12, x: 538, y: 512, text: "CH4" },
+      { page: 12, x: 580, y: 512, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 512, text: "0.003" },
+      { page: 12, x: 7, y: 300, text: "Fuel consumption" },
+    ];
+
+    const engineOut = parseEngineOutSpecificResultsFromItems(items);
+    const tailpipe = parseTailpipeSpecificResultsFromItems(items);
+    expect(engineOut.engineOutCH4).toBe("-0.009");
+    expect(tailpipe.tailpipeCH4).toBe("0.003");
+  });
+
   it("uses coordinates to select the Tailpipe EBH02 table even when the PDF mentions EBH01 elsewhere", () => {
     const items: PositionedPdfTextItem[] = [
       { page: 12, x: 10, y: 780, text: "Device information: EBH01 also present elsewhere" },
