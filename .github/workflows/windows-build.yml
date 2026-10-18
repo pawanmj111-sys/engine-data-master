@@ -1,0 +1,60 @@
+name: Windows desktop build
+
+on:
+  push:
+    branches:
+      - main
+      - "fix/**"
+      - "feature/**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run unit tests
+        run: npm run test
+      - name: Run lint
+        run: npm run lint
+      - name: Build web app
+        run: npm run build
+
+  windows-exe:
+    name: Build Windows installer and portable EXE
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Build Windows EXEs
+        run: npm run build:exe
+      - name: Upload Windows EXE artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EngineLab-Windows-EXE
+          path: |
+            release/*.exe
+          if-no-files-found: error
+          retention-days: 30
