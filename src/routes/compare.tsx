@@ -209,7 +209,8 @@ function Compare() {
               const front = { ...s.compareFront, fields: [...s.compareFront.fields] };
               const imported: [string, string][] = [
                 ["Date", record.values.date ?? ""],
-                ["Engine Model", record.values.engine ?? ""],
+                ["Engine Model", record.values.engineModel ?? record.values.engine ?? ""],
+                ["Engine Number", record.values.engineNumber ?? ""],
                 ["Test Cycle", s.cyclicCycle],
                 ["Test ID", record.values.testId ?? ""],
                 ["Test Name", record.values.testName ?? ""],
