@@ -48,7 +48,10 @@ const NUM = new RegExp(NUMBER_SOURCE, "g");
 const normNum = (s: string) => s.replace(/\s+/g, "").replace(",", ".").replace(/[x×]10\^?/, "E");
 
 
-const ENGINE_OUT_SPECIFIC_DEFS: { key: string; label: string; re: RegExp }[] = [
+type BenchResultTarget = "engineOut" | "tailpipe";
+type SpecificResultDefinition = { key: string; label: string; re: RegExp };
+
+const ENGINE_OUT_SPECIFIC_DEFS: SpecificResultDefinition[] = [
   { key: "engineOutCH4", label: "CH4", re: /^\s*CH4\b/i },
   { key: "engineOutCO2", label: "CO2", re: /^\s*CO2\b/i },
   { key: "engineOutCOH", label: "COH", re: /^\s*COH\b/i },
@@ -60,9 +63,28 @@ const ENGINE_OUT_SPECIFIC_DEFS: { key: string; label: string; re: RegExp }[] = [
   { key: "engineOutO2", label: "O2", re: /^\s*O2\b/i },
 ];
 
-function valuesFromSpecificRows(rows: string[]): Record<string, string> {
+const TAILPIPE_SPECIFIC_DEFS: SpecificResultDefinition[] = [
+  { key: "tailpipeCH4", label: "CH4", re: /^\s*CH4\b/i },
+  { key: "tailpipeCO2", label: "CO2", re: /^\s*CO2\b/i },
+  { key: "tailpipeCOL", label: "COL", re: /^\s*COL\b/i },
+  { key: "tailpipeCO", label: "CO (COL - Tailpipe)", re: /^\s*CO\s*\(\s*COL\s*-\s*Tailpipe\s*\)/i },
+  { key: "tailpipeTHC", label: "THC", re: /^\s*THC\b/i },
+  { key: "tailpipeNO2", label: "NO2 (NOX,NO - Tailpipe)", re: /^\s*NO2\s*\(\s*NOX\s*,\s*NO\s*-\s*Tailpipe\s*\)/i },
+  { key: "tailpipeNOX", label: "NOX", re: /^\s*NOX\b/i },
+  { key: "tailpipeNO", label: "NO", re: /^\s*NO\b/i },
+  { key: "tailpipeO2", label: "O2", re: /^\s*O2\b/i },
+];
+
+function definitionsForTarget(target: BenchResultTarget): SpecificResultDefinition[] {
+  return target === "engineOut" ? ENGINE_OUT_SPECIFIC_DEFS : TAILPIPE_SPECIFIC_DEFS;
+}
+
+function valuesFromSpecificRows(
+  rows: string[],
+  definitions: SpecificResultDefinition[] = ENGINE_OUT_SPECIFIC_DEFS,
+): Record<string, string> {
   const values: Record<string, string> = {};
-  for (const def of ENGINE_OUT_SPECIFIC_DEFS) {
+  for (const def of definitions) {
     const row = rows.find((line) => def.re.test(line));
     if (!row) continue;
     const label = def.re.exec(row);
@@ -73,55 +95,119 @@ function valuesFromSpecificRows(rows: string[]): Record<string, string> {
   return values;
 }
 
-function engineOutDetailsFromValues(values: Record<string, string>): string {
-  return ENGINE_OUT_SPECIFIC_DEFS
+function specificDetailsFromValues(values: Record<string, string>, definitions: SpecificResultDefinition[]): string {
+  return definitions
     .filter((def) => values[def.key] !== undefined)
     .map((def) => def.label + ": " + values[def.key] + " g/kWh")
     .join("\n");
 }
 
+function engineOutDetailsFromValues(values: Record<string, string>): string {
+  return specificDetailsFromValues(values, ENGINE_OUT_SPECIFIC_DEFS);
+}
+
+function tailpipeDetailsFromValues(values: Record<string, string>): string {
+  return specificDetailsFromValues(values, TAILPIPE_SPECIFIC_DEFS);
+}
+
 /**
- * Uses PDF.js item coordinates to select the rightmost "Specific results" table.
- * This matters because each PDF page places Concentrations, Mass results and Specific results side by side.
+ * Selects the rightmost "Specific results" table belonging to a named, undriftcorrected
+ * bench-results section. Both EBH01 and EBH02 can appear in one PDF, so they are
+ * parsed independently and stored under different keys.
  */
-export function parseEngineOutSpecificResultsFromItems(items: PositionedPdfTextItem[]): Record<string, string> {
+export function parseSpecificResultsFromItems(
+  items: PositionedPdfTextItem[],
+  target: BenchResultTarget,
+): Record<string, string> {
+  const definitions = definitionsForTarget(target);
+  const targetLabel = target === "engineOut" ? /EngineOut|EBH01/i : /Tailpipe|EBH02/i;
   const pages = [...new Set(items.map((item) => item.page))];
+
   for (const page of pages) {
     const pageItems = items.filter((item) => item.page === page);
-    const pageText = pageItems.map((item) => item.text).join(" ");
-    if (!/EngineOut/i.test(pageText) || !/bench\s+results/i.test(pageText) || !/not\s+driftcorrected/i.test(pageText)) continue;
-
     const groups = new Map<number, PositionedPdfTextItem[]>();
     for (const item of pageItems) {
       const y = Math.round(item.y / 2) * 2;
       if (!groups.has(y)) groups.set(y, []);
       groups.get(y)!.push(item);
     }
-    const rows = [...groups.entries()].map(([y, rowItems]) => ({
-      y,
-      items: rowItems.sort((a, b) => a.x - b.x),
-      text: rowItems.sort((a, b) => a.x - b.x).map((item) => item.text).join(" "),
-    }));
-    const heading = rows.find((row) => /Specific\s+results/i.test(row.text));
-    if (!heading) continue;
-    const headingItem = heading.items.find((item) => /Specific/i.test(item.text));
-    if (!headingItem) continue;
 
-    // The next section begins at "Fuel consumption"; use it to keep other tables/metadata out.
-    const lowerHeading = rows
-      .filter((row) => row.y < heading.y && row.items.some((item) => /^Fuel\s+consumption$/i.test(item.text.trim())))
-      .sort((a, b) => b.y - a.y)[0];
-    const lowerY = lowerHeading?.y ?? heading.y - 180;
-    const specificRows = rows
-      .filter((row) => row.y < heading.y - 2 && row.y > lowerY + 2)
-      .map((row) => row.items
-        .filter((item) => item.x >= headingItem.x - 20)
-        .sort((a, b) => a.x - b.x)
-        .map((item) => item.text)
-        .join(" "))
-      .filter((row) => row.trim().length > 0);
-    const values = valuesFromSpecificRows(specificRows);
-    if (Object.keys(values).length > 0) return values;
+    const rows = [...groups.entries()].map(([y, rowItems]) => {
+      const sorted = [...rowItems].sort((a, b) => a.x - b.x);
+      return { y, items: sorted, text: sorted.map((item) => item.text).join(" ") };
+    });
+
+    // Some reports repeat the sensor/bench code elsewhere. Require the target code
+    // on the same bench heading row, along with the full heading wording.
+    const benchRows = rows.filter((row) =>
+      /bench\s+results/i.test(row.text) &&
+      /not\s*[- ]?\s*driftcorrected/i.test(row.text) &&
+      targetLabel.test(row.text)
+    );
+    if (!benchRows.length) continue;
+
+    const specificHeadings = rows.filter((row) => /Specific\s+results/i.test(row.text));
+    for (const heading of specificHeadings) {
+      const headingItem = heading.items.find((item) => /Specific/i.test(item.text));
+      if (!headingItem) continue;
+
+      const bench = [...benchRows].sort((a, b) =>
+        Math.abs(a.y - heading.y) - Math.abs(b.y - heading.y)
+      )[0];
+      if (!bench) continue;
+
+      // Restrict the lower boundary search to the same right-hand table, not
+      // a neighbouring Concentrations/Mass-results table.
+      const lowerHeading = rows
+        .filter((row) => row.y < heading.y &&
+          row.items.some((item) => item.x >= headingItem.x - 20 && /^Fuel\s+consumption$/i.test(item.text.trim())))
+        .sort((a, b) => b.y - a.y)[0];
+      const lowerY = lowerHeading?.y ?? heading.y - 180;
+
+      const specificRows = rows
+        .filter((row) => row.y < heading.y - 2 && row.y > lowerY + 2)
+        .map((row) => row.items
+          .filter((item) => item.x >= headingItem.x - 20)
+          .map((item) => item.text)
+          .join(" "))
+        .filter((row) => row.trim().length > 0);
+
+      const values = valuesFromSpecificRows(specificRows, definitions);
+      if (Object.keys(values).length > 0) {
+        // Bench is intentionally selected before row parsing so this table is
+        // only accepted when a matching EBH01/EBH02 heading exists on this page.
+        void bench;
+        return values;
+      }
+    }
+  }
+  return {};
+}
+
+export function parseEngineOutSpecificResultsFromItems(items: PositionedPdfTextItem[]): Record<string, string> {
+  return parseSpecificResultsFromItems(items, "engineOut");
+}
+
+export function parseTailpipeSpecificResultsFromItems(items: PositionedPdfTextItem[]): Record<string, string> {
+  return parseSpecificResultsFromItems(items, "tailpipe");
+}
+
+function parseSpecificResultsFromLines(lines: string[], target: BenchResultTarget): Record<string, string> {
+  const definitions = definitionsForTarget(target);
+  const targetLabel = target === "engineOut" ? /EngineOut|EBH01/i : /Tailpipe|EBH02/i;
+  for (let headerIndex = 0; headerIndex < lines.length; headerIndex++) {
+    const header = lines[headerIndex];
+    if (!/bench\s+results/i.test(header) ||
+        !/not\s*[- ]?\s*driftcorrected/i.test(header) ||
+        !targetLabel.test(header)) continue;
+
+    const headingIndex = lines.findIndex((line, i) => i > headerIndex && i <= headerIndex + 24 && /Specific\s+results/i.test(line));
+    if (headingIndex < 0) continue;
+    const endIndex = lines.findIndex((line, i) => i > headingIndex && i < headingIndex + 56 &&
+      (/Fuel\s+consumption/i.test(line) || /bench\s+results/i.test(line)));
+    const section = lines.slice(headingIndex + 1, endIndex >= 0 ? endIndex : headingIndex + 56);
+    const values = valuesFromSpecificRows(section, definitions);
+    if (Object.keys(values).length) return values;
   }
   return {};
 }
@@ -212,13 +298,6 @@ function parseNamedRow(text: string, def: SummaryPollutant, allDefs: SummaryPoll
   };
 }
 
-function parseSpecificResults(lines: string[]) {
-  const start = lines.findIndex((line, i) => /Specific\s+results\s+Phase\s*1/i.test(line) ||
-    (/Specific\s+results/i.test(line) && /Phase\s*1/i.test(lines[i + 1] ?? "")));
-  if (start < 0 || !lines.slice(Math.max(0, start - 12), start).some((line) => /EngineOut/i.test(line))) return "";
-  const section = lines.slice(start + 1, start + 56);
-  return engineOutDetailsFromValues(valuesFromSpecificRows(section));
-}
 
 export function extractFromLines(lines: string[], fileName: string, cycle: CyclicCycle): CyclicRecord {
   const rec: CyclicRecord = { id: uid(), source: fileName, status: "review", message: "", sectionText: "", values: {} };
@@ -319,8 +398,13 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
     if (Object.keys(genericResults).length) notes.push("Generic layout fallback used; manually verify extracted results and limits.");
   }
 
-  const engineOutDetails = parseSpecificResults(lines);
+  const engineOutSpecificValues = parseSpecificResultsFromLines(lines, "engineOut");
+  const tailpipeSpecificValues = parseSpecificResultsFromLines(lines, "tailpipe");
+  Object.assign(values, engineOutSpecificValues, tailpipeSpecificValues);
+  const engineOutDetails = engineOutDetailsFromValues(engineOutSpecificValues);
+  const tailpipeDetails = tailpipeDetailsFromValues(tailpipeSpecificValues);
   if (engineOutDetails) values.engineOutDetails = engineOutDetails;
+  if (tailpipeDetails) values.tailpipeDetails = tailpipeDetails;
   const grab = (re: RegExp) => { for (const line of lines) { const m = line.match(re); if (m) return m[m.length - 1].trim(); } return ""; };
   values.cycle = cycle;
   values.date = grab(/\b(?:Test\s*)?Date(?:\s*\/\s*Time)?\s*[:-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
@@ -336,10 +420,11 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
   if (!new RegExp("\\b" + cycle + "\\b").test(full) && others.length)
     notes.push("Report mentions " + others.join("/") + " but not " + cycle + " — check that the right cycle is selected.");
 
-  const recognized = parsedSummaryRows || Object.keys(genericResults).length;
+  const recognized = parsedSummaryRows || Object.keys(genericResults).length || Object.keys(engineOutSpecificValues).length || Object.keys(tailpipeSpecificValues).length;
   rec.status = recognized && start >= 0 ? "extracted" : "review";
   if (!recognized) notes.push("No emission values recognised — requires manual review.");
-  if (engineOutDetails) notes.push("EngineOut EBH01 Specific results Phase 1 was extracted separately from the Stage V summary.");
+  if (engineOutDetails) notes.push("EngineOut (EBH01) Specific results Phase 1 was extracted separately from the Stage V summary.");
+  if (tailpipeDetails) notes.push("Tailpipe (EBH02) Specific results Phase 1 was extracted separately from the Stage V summary.");
   rec.message = notes.join(" ");
   return rec;
 }
@@ -349,11 +434,19 @@ export async function extractPdf(file: File, cycle: CyclicCycle): Promise<Cyclic
     const pdfData = await readPdfData(file);
     const record = extractFromLines(pdfData.lines, file.name, cycle);
     const engineOutValues = parseEngineOutSpecificResultsFromItems(pdfData.items);
+    const tailpipeValues = parseTailpipeSpecificResultsFromItems(pdfData.items);
     if (Object.keys(engineOutValues).length > 0) {
       if (record.status !== "extracted") record.status = "extracted";
       Object.assign(record.values, engineOutValues);
       record.values.engineOutDetails = engineOutDetailsFromValues(engineOutValues);
-      record.message = [record.message, "EngineOut (EBH01) bench results — Specific results Phase 1 extracted from the rightmost table using PDF text coordinates."]
+      record.message = [record.message, "EngineOut (EBH01) bench results — Specific results Phase 1 extracted from the rightmost table."]
+        .filter(Boolean).join(" ");
+    }
+    if (Object.keys(tailpipeValues).length > 0) {
+      if (record.status !== "extracted") record.status = "extracted";
+      Object.assign(record.values, tailpipeValues);
+      record.values.tailpipeDetails = tailpipeDetailsFromValues(tailpipeValues);
+      record.message = [record.message, "Tailpipe (EBH02) bench results — Specific results Phase 1 extracted from the rightmost table."]
         .filter(Boolean).join(" ");
     }
     return record;
