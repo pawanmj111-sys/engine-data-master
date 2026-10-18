@@ -18,6 +18,18 @@ const ENGINE_OUT_FIELDS: { key: string; label: string }[] = [
   { key: "engineOutO2", label: "O2" },
 ];
 
+const TAILPIPE_FIELDS: { key: string; label: string }[] = [
+  { key: "tailpipeCH4", label: "CH4" },
+  { key: "tailpipeCO2", label: "CO2" },
+  { key: "tailpipeCOL", label: "COL" },
+  { key: "tailpipeCO", label: "CO (COL - Tailpipe)" },
+  { key: "tailpipeTHC", label: "THC" },
+  { key: "tailpipeNO2", label: "NO2 (NOX,NO - Tailpipe)" },
+  { key: "tailpipeNOX", label: "NOX" },
+  { key: "tailpipeNO", label: "NO" },
+  { key: "tailpipeO2", label: "O2" },
+];
+
 export const Route = createFileRoute("/cyclic")({
   head: () => ({
     meta: [
@@ -43,6 +55,12 @@ function Cyclic() {
         const values = { ...record.values, [k]: v };
         if (ENGINE_OUT_FIELDS.some((field) => field.key === k)) {
           values.engineOutDetails = ENGINE_OUT_FIELDS
+            .filter((field) => values[field.key] !== undefined)
+            .map((field) => field.label + ": " + values[field.key] + " g/kWh")
+            .join("\n");
+        }
+        if (TAILPIPE_FIELDS.some((field) => field.key === k)) {
+          values.tailpipeDetails = TAILPIPE_FIELDS
             .filter((field) => values[field.key] !== undefined)
             .map((field) => field.label + ": " + values[field.key] + " g/kWh")
             .join("\n");
@@ -99,7 +117,7 @@ function Cyclic() {
                     <button className="text-destructive" onClick={() => s.set({ cyclicRecords: s.cyclicRecords.filter((x) => x.id !== r.id) })}>Remove</button>
                   </td>
                 </tr>
-                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{ENGINE_OUT_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></details></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
+                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{ENGINE_OUT_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></details></div>}{r.values.tailpipeDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Tailpipe (EBH02) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{TAILPIPE_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.tailpipeDetails}</pre></details></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
               </>))}
             </tbody>
           </table>
