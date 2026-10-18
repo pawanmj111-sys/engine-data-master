@@ -87,6 +87,20 @@ export interface CyclicRecord {
 export const today = () => new Date().toISOString().slice(0, 10);
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
+function loadParameterAliases(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem("engine-data-master:parameter-aliases") ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter(([key, aliases]) => key.trim() && Array.isArray(aliases))
+        .map(([key, aliases]) => [key, (aliases as unknown[]).filter((alias): alias is string => typeof alias === "string" && alias.trim().length > 0)]),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export function defaultFront(title: string, cycle: string): FrontPage {
   const f = (label: string, value = "", required = false): FrontField => ({
     id: uid(),
@@ -133,6 +147,7 @@ export const DEFAULT_CYCLIC_COLUMNS: CyclicColumn[] = [
 interface State {
   cycle: Cycle;
   dataType: DataType;
+  parameterAliases: Record<string, string[]>;
   datasets: Dataset[];
   graphs: GraphConfig[];
   activeGraph: string;
@@ -183,6 +198,7 @@ export function newGraph(n: number, datasets: Dataset[]): GraphConfig {
 export const useApp = create<State>((setState, get) => ({
   cycle: "NRTC",
   dataType: "1hz",
+  parameterAliases: loadParameterAliases(),
   datasets: [],
   graphs: [],
   activeGraph: "",
