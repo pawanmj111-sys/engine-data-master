@@ -202,13 +202,13 @@ function parseNamedRow(text: string, def: SummaryPollutant, allDefs: SummaryPoll
   const explicitDeviceMatch = /\bDevice\s*[:=]?\s*([^\s,;]+)/i.exec(block);
   const afterStatus = statusMatch ? block.slice(statusMatch.index + statusMatch[0].length).trim() : "";
   const trailingColumns = afterStatus.replace(/^Sample\s*point\s*[:=]?\s*/i, "").replace(/^Device\s*[:=]?\s*/i, "").split(/\s+/).filter(Boolean);
-  const sampleMatch = explicitSampleMatch ?? (trailingColumns.length >= 2 ? [trailingColumns[0]] as unknown as RegExpExecArray : null);
-  const deviceMatch = explicitDeviceMatch ?? (trailingColumns.length >= 2 ? [trailingColumns[1]] as unknown as RegExpExecArray : null);
+  const samplePoint = explicitSampleMatch?.[1]?.trim() ?? (trailingColumns.length >= 2 ? trailingColumns[0] : "");
+  const device = explicitDeviceMatch?.[1]?.trim() ?? (trailingColumns.length >= 2 ? trailingColumns[1] : "");
   return {
     def, actual, limit,
     status: statusMatch ? (/^P/i.test(statusMatch[1]) ? "Passed" : "Failed") : "",
-    samplePoint: sampleMatch?.[1]?.trim() ?? "",
-    device: deviceMatch?.[1]?.trim() ?? "",
+    samplePoint,
+    device,
   };
 }
 
