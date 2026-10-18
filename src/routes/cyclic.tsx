@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp, uid, type CyclicCycle } from "@/lib/store";
 import { extractPdf } from "@/lib/pdfExtract";
+import { exportCyclicWorkbook } from "@/lib/builders";
 import { Btn, Inp, PageHeader, Panel, Segmented, Field } from "@/components/kit";
 import { FrontEditor } from "@/components/FrontPageEditor";
 
@@ -80,7 +81,23 @@ function Cyclic() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="PDF Cyclic Emission Summary" desc="Independent module. Values are never invented — blank means not found." actions={<Link to="/report" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Preview report</Link>} />
+      <PageHeader
+        title="PDF Cyclic Emission Summary"
+        desc="Independent module. Values are never invented — blank means not found."
+        actions={
+          <>
+            <Btn onClick={() => {
+              try {
+                exportCyclicWorkbook(useApp.getState());
+                toast.success("Cyclic emission Excel workbook exported.");
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Excel export failed.");
+              }
+            }}>Export Excel</Btn>
+            <Link to="/report" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Preview report</Link>
+          </>
+        }
+      />
       <Panel title="1 · Test cycle">
         <Segmented value={s.cyclicCycle} onChange={(c: CyclicCycle) => s.set({ cyclicCycle: c })} options={(["NRTC", "NRSC", "RMC"] as const).map((v) => ({ value: v, label: v }))} />
       </Panel>
