@@ -199,12 +199,12 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
   if (details.length) {
     values.emissionLimitDetails = details.join("\n");
     if (limitParts.length) values.limits = limitParts.join("; ");
-    const overall = /\boverall\s+status\s*[:\-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)/i.exec(full);
+    const overall = /\boverall\s+status\s*[:-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)/i.exec(full);
     if (overall) values.result = /^P/i.test(overall[1]) ? "Pass" : "Fail";
     else {
       const firstRow = best!.section.findIndex((line) => SUMMARY_POLLUTANTS.some((p) => p.re.test(line)));
       const beforeRows = best!.section.slice(0, firstRow < 0 ? 1 : firstRow + 1).join(" ");
-      const status = /\bStatus\s*[:\-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)\b/i.exec(beforeRows);
+      const status = /\bStatus\s*[:-]?\s*(PASS(?:ED)?|FAIL(?:ED)?)\b/i.exec(beforeRows);
       if (status) values.result = /^P/i.test(status[1]) ? "Pass" : "Fail";
     }
     if (best!.hasRequestedRevision) notes.push("Selected the explicit NRE-v-3/NRE-c-3 Stage V summary heading.");
@@ -247,10 +247,10 @@ export function extractFromLines(lines: string[], fileName: string, cycle: Cycli
   const engineOutDetails = parseSpecificResults(lines);
   if (engineOutDetails) values.engineOutDetails = engineOutDetails;
   const grab = (re: RegExp) => { for (const line of lines) { const m = line.match(re); if (m) return m[m.length - 1].trim(); } return ""; };
-  values.date = grab(/\b(?:Test\s*)?Date\s*[:\-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
-  values.testId = grab(/Test\s*(?:ID|No\.?|Number)\s*[:\-]?\s*([A-Za-z0-9_\-./]+)/i);
-  values.testName = grab(/Test\s*Name\s*[:\-]\s*(.+?)(?:\s{2,}|$)/i);
-  values.engine = grab(/Engine\s*(?:Model|Type|No\.?|Number|S\/N|Serial)\s*[:\-]?\s*(.+?)(?:\s{2,}|$)/i);
+  values.date = grab(/\b(?:Test\s*)?Date\s*[:-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,4})/i);
+  values.testId = grab(/Test\s*(?:ID|No\.?|Number)\s*[:-]?\s*([A-Za-z0-9_./-]+)/i);
+  values.testName = grab(/Test\s*Name\s*[:-]\s*(.+?)(?:\s{2,}|$)/i);
+  values.engine = grab(/Engine\s*(?:Model|Type|No\.?|Number|S\/N|Serial)\s*[:-]?\s*(.+?)(?:\s{2,}|$)/i);
   Object.assign(rec.values, values);
 
   const cycles = ["NRTC", "NRSC", "RMC"] as const;
