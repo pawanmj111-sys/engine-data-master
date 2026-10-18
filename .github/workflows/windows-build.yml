@@ -23,18 +23,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
+          bun-version: latest
       - name: Install dependencies
-        run: npm install
+        run: bun install --frozen-lockfile
       - name: Run unit tests
-        run: npm run test
+        run: bun run test
       - name: Run lint
-        run: npm run lint
+        run: bun run lint
       - name: Build web app
-        run: npm run build
+        run: bun run build
 
   windows-exe:
     name: Build Windows installer and portable EXE
@@ -42,14 +42,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
+          bun-version: latest
       - name: Install dependencies
-        run: npm install
+        run: bun install --frozen-lockfile
       - name: Build Windows EXEs
-        run: npm run build:exe
+        run: bun run build:exe
       - name: Upload Windows EXE artifacts
         uses: actions/upload-artifact@v4
         with:
