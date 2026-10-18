@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFromLines, parseEngineOutSpecificResultsFromItems, type PositionedPdfTextItem } from "./pdfExtract";
+import { extractFromLines, parseEngineOutSpecificResultsFromItems, parseTailpipeSpecificResultsFromItems, type PositionedPdfTextItem } from "./pdfExtract";
 
 const reportLines = [
   "Test cycle NRTC",
@@ -26,6 +26,17 @@ const reportLines = [
   "NOX [g/kWh] 3.244",
   "NO [g/kWh] 1.747",
   "O2 [g/kWh] 1368.425",
+  "Tailpipe (EBH02) bench results - not driftcorrected",
+  "Specific results Phase 1",
+  "CH4 [g/kWh] 0.003",
+  "CO2 [g/kWh] 1052.622",
+  "COL [g/kWh] 0.286",
+  "CO (COL - Tailpipe) [g/kWh] 0.286",
+  "THC [g/kWh] 0.129",
+  "NO2 (NOX,NO - Tailpipe) [g/kWh] 0.811",
+  "NOX [g/kWh] 3.239",
+  "NO [g/kWh] 1.605",
+  "O2 [g/kWh] 1443.520",
 ];
 
 describe("Stage V PDF extraction", () => {
@@ -75,6 +86,74 @@ describe("Stage V PDF extraction", () => {
       "NO: 1.747 g/kWh",
       "O2: 1368.425 g/kWh",
     ]) expect(details).toContain(expected);
+  });
+
+  it("extracts Tailpipe EBH02 Specific results and keeps them separate from EngineOut", () => {
+    const rec = extractFromLines(reportLines, "2025_06_460_NRTC_WI_DOC.pdf", "NRTC");
+    const details = rec.values.tailpipeDetails ?? "";
+    for (const expected of [
+      "CH4: 0.003 g/kWh",
+      "CO2: 1052.622 g/kWh",
+      "COL: 0.286 g/kWh",
+      "CO (COL - Tailpipe): 0.286 g/kWh",
+      "THC: 0.129 g/kWh",
+      "NO2 (NOX,NO - Tailpipe): 0.811 g/kWh",
+      "NOX: 3.239 g/kWh",
+      "NO: 1.605 g/kWh",
+      "O2: 1443.520 g/kWh",
+    ]) expect(details).toContain(expected);
+    expect(rec.values.engineOutCH4).toBe("-0.009");
+    expect(rec.values.tailpipeCH4).toBe("0.003");
+    expect(rec.values.tailpipeO2).toBe("1443.520");
+  });
+
+  it("uses coordinates to select the Tailpipe EBH02 table even when the PDF mentions EBH01 elsewhere", () => {
+    const items: PositionedPdfTextItem[] = [
+      { page: 12, x: 10, y: 780, text: "Device information: EBH01 also present elsewhere" },
+      { page: 12, x: 10, y: 750, text: "Tailpipe (EBH02) bench results - not driftcorrected" },
+      { page: 12, x: 534, y: 730, text: "Specific results" },
+      { page: 12, x: 7, y: 500, text: "Fuel consumption" },
+      { page: 12, x: 275, y: 712, text: "CH4" },
+      { page: 12, x: 330, y: 712, text: "999.999" },
+      { page: 12, x: 538, y: 712, text: "CH4" },
+      { page: 12, x: 580, y: 712, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 712, text: "0.003" },
+      { page: 12, x: 538, y: 702, text: "CO2" },
+      { page: 12, x: 580, y: 702, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 702, text: "1052.622" },
+      { page: 12, x: 538, y: 692, text: "COL" },
+      { page: 12, x: 580, y: 692, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 692, text: "0.286" },
+      { page: 12, x: 538, y: 682, text: "CO (COL - Tailpipe)" },
+      { page: 12, x: 580, y: 682, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 682, text: "0.286" },
+      { page: 12, x: 538, y: 672, text: "THC" },
+      { page: 12, x: 580, y: 672, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 672, text: "0.129" },
+      { page: 12, x: 538, y: 662, text: "NO2 (NOX,NO - Tailpipe)" },
+      { page: 12, x: 580, y: 662, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 662, text: "0.811" },
+      { page: 12, x: 538, y: 652, text: "NOX" },
+      { page: 12, x: 580, y: 652, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 652, text: "3.239" },
+      { page: 12, x: 538, y: 642, text: "NO" },
+      { page: 12, x: 580, y: 642, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 642, text: "1.605" },
+      { page: 12, x: 538, y: 632, text: "O2" },
+      { page: 12, x: 580, y: 632, text: "[g/kWh]" },
+      { page: 12, x: 630, y: 632, text: "1443.520" },
+    ];
+    const values = parseTailpipeSpecificResultsFromItems(items);
+    expect(values.tailpipeCH4).toBe("0.003");
+    expect(values.tailpipeCO2).toBe("1052.622");
+    expect(values.tailpipeCOL).toBe("0.286");
+    expect(values.tailpipeCO).toBe("0.286");
+    expect(values.tailpipeTHC).toBe("0.129");
+    expect(values.tailpipeNO2).toBe("0.811");
+    expect(values.tailpipeNOX).toBe("3.239");
+    expect(values.tailpipeNO).toBe("1.605");
+    expect(values.tailpipeO2).toBe("1443.520");
+    expect(values.tailpipeCH4).not.toBe("999.999");
   });
 
   it("uses PDF item coordinates to read only the EngineOut Specific results column", () => {
