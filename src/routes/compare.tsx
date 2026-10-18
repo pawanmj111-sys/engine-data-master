@@ -237,6 +237,15 @@ function Compare() {
                 ["PN Status", record.values.pnStatus ?? ""],
                 ["PN Sample Point", record.values.pnSamplePoint ?? ""],
                 ["PN Device", record.values.pnDevice ?? ""],
+                ["EngineOut CH4 [g/kWh]", record.values.engineOutCH4 ?? ""],
+                ["EngineOut CO2 [g/kWh]", record.values.engineOutCO2 ?? ""],
+                ["EngineOut COH [g/kWh]", record.values.engineOutCOH ?? ""],
+                ["EngineOut CO (COH - EngineOut) [g/kWh]", record.values.engineOutCO ?? ""],
+                ["EngineOut THC [g/kWh]", record.values.engineOutTHC ?? ""],
+                ["EngineOut NO2 (NOX,NO - EngineOut) [g/kWh]", record.values.engineOutNO2 ?? ""],
+                ["EngineOut NOX [g/kWh]", record.values.engineOutNOX ?? ""],
+                ["EngineOut NO [g/kWh]", record.values.engineOutNO ?? ""],
+                ["EngineOut O2 [g/kWh]", record.values.engineOutO2 ?? ""],
               ].filter(([, value]) => value.trim().length > 0);
               for (const [label, value] of imported) {
                 const found = front.fields.findIndex((field) => field.label.trim().toLowerCase() === label.toLowerCase());
