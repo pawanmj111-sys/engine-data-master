@@ -31,7 +31,11 @@ function Compare() {
   const [selectedCyclicRecordId, setSelectedCyclicRecordId] = useState("");
   const [aliasCanonical, setAliasCanonical] = useState("");
   const [aliasSynonyms, setAliasSynonyms] = useState("");
-  const allHeaders = useMemo(() => [...new Set([...s.datasets.flatMap((d) => d.headers), ...Object.keys(s.parameterAliases)])], [s.datasets, s.parameterAliases]);
+  const allHeaders = useMemo(() => [...new Set([
+    ...s.datasets.flatMap((d) => d.headers),
+    ...Object.keys(s.parameterAliases),
+    ...Object.values(s.parameterAliases).flat(),
+  ])], [s.datasets, s.parameterAliases]);
   const selectedCyclicRecord = s.cyclicRecords.find((record) => record.id === selectedCyclicRecordId) ?? s.cyclicRecords[s.cyclicRecords.length - 1];
   const g = s.graphs.find((x) => x.id === s.activeGraph) ?? s.graphs[0];
 
@@ -310,7 +314,7 @@ function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
       </div>
       <div className="min-w-0 space-y-3">
         <Warnings items={fig.analysis.warnings} />
-        <Plot data={fig.data} layout={fig.layout} className="h-[520px] w-full rounded border" />
+        <Plot key={g.id} historyKey={g.id} data={fig.data} layout={fig.layout} className="h-[520px] w-full rounded border" />
         <div className="flex flex-wrap gap-2">
           <Btn onClick={async () => downloadDataUrl(await figureToPng(fig), `${safe(g.title)}.png`)}>Download PNG</Btn>
           <Btn onClick={() => exportGraphData(fig.analysis, g, s.datasets, "xlsx")}>Export Excel</Btn>
