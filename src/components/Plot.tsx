@@ -252,12 +252,12 @@ export function Plot({
         }
       };
       el.addEventListener("pointerdown", focusPlot);
-      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keydown", onKeyDown, true);
       el.on("plotly_click", onClick);
       el.on("plotly_relayout", onRelayout);
       removePlotListeners = () => {
         el.removeEventListener("pointerdown", focusPlot);
-        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keydown", onKeyDown, true);
         el.removeListener("plotly_click", onClick);
         el.removeListener("plotly_relayout", onRelayout);
       };
