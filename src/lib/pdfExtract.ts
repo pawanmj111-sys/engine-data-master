@@ -17,11 +17,11 @@ export interface PositionedPdfTextItem {
 
 async function readPdfData(file: File): Promise<{ lines: string[]; items: PositionedPdfTextItem[] }> {
   if (!file || file.size === 0) throw new Error("The selected PDF is empty.");
-  const pdfjs = await loadPdfjs();
   const data = new Uint8Array(await file.arrayBuffer());
   if (data.length < 5 || String.fromCharCode(...data.slice(0, 5)) !== "%PDF-") {
     throw new Error("This file does not appear to be a valid PDF. Please select the original PDF report.");
   }
+  const pdfjs = await loadPdfjs();
   const pdf = await pdfjs.getDocument({ data }).promise;
   if (!pdf.numPages) throw new Error("The PDF has no readable pages.");
 
@@ -473,6 +473,18 @@ export async function extractPdf(file: File, cycle: CyclicCycle): Promise<Cyclic
     }
     return record;
   } catch (e) {
-    return { id: uid(), source: file.name, status: "error", message: "Could not read PDF: " + (e as Error).message, sectionText: "", values: {} };
+    const rawMessage = e instanceof Error ? e.message : String(e);
+    const lowerMessage = rawMessage.toLowerCase();
+    let message = rawMessage;
+    if (/password|encrypted/.test(lowerMessage)) {
+      message = "The PDF is password-protected or encrypted. Save an unlocked copy and upload it again. Details: " + rawMessage;
+    } else if (/worker|dynamically imported module|module script|fake worker/.test(lowerMessage)) {
+      message = "The PDF reader could not start its bundled worker. Update to the latest EngineLab Windows build and retry. Details: " + rawMessage;
+    } else if (/invalid pdf|pdf header|missing pdf/.test(lowerMessage)) {
+      message = "The file is damaged or is not a valid PDF. Open it in a PDF viewer, save a fresh copy, and retry. Details: " + rawMessage;
+    } else {
+      message = rawMessage || "Unknown PDF reader error.";
+    }
+    return { id: uid(), source: file.name, status: "error", message: "Could not read PDF: " + message, sectionText: "", values: {} };
   }
 }
