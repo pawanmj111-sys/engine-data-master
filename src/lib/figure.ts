@@ -33,12 +33,18 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
   for (const s of a.series) {
     if (g.hidden.includes(s.key) || g.hidden.includes(s.dsId) || g.hidden.includes(`col::${s.col}`)) continue;
     const st = traceStyle(g, datasets, s.key);
+    const triggeredLabels = dataType === "triggered";
     data.push({
       type: "scattergl",
-      mode: g.mode,
+      mode: triggeredLabels ? `${g.mode}+text` : g.mode,
       name: st.label,
       x: s.x,
       y: s.y,
+      ...(triggeredLabels ? {
+        text: s.y.map((value) => value === null ? "" : Number(value.toPrecision(5)).toString()),
+        textposition: "top center",
+        textfont: { size: large ? 10 : 9, color: st.color },
+      } : {}),
       line: { color: st.color, width: st.width, dash: st.dash },
       marker: { color: st.color, size: large ? 8 : 6 },
       connectgaps: false,
@@ -47,14 +53,22 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
   }
   for (const d of a.diffs) {
     const st = traceStyle(g, datasets, d.key.replace("diff::", ""));
+    const diffLabel = `Δ${g.diffMode === "pct" ? "%" : ""} ${d.label}`;
+    const triggeredLabels = dataType === "triggered";
     data.push({
       type: "scattergl",
-      mode: dataType === "triggered" ? "lines+markers" : "lines",
-      name: `Δ${g.diffMode === "pct" ? "%" : ""} ${d.label}`,
+      mode: triggeredLabels ? "lines+markers+text" : "lines",
+      name: diffLabel,
       x: d.x,
       y: d.y,
+      ...(triggeredLabels ? {
+        text: d.y.map((value) => value === null ? "" : Number(value.toPrecision(5)).toString()),
+        textposition: "top center",
+        textfont: { size: large ? 9 : 8, color: st.color },
+      } : {}),
       yaxis: "y2",
       line: { color: st.color, width: 1.5, dash: "dot" },
+      marker: { color: st.color, size: large ? 7 : 5 },
       connectgaps: false,
     });
   }
