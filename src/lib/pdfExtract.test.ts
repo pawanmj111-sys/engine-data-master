@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFromLines, parseEngineOutSpecificResultsFromItems, parseTailpipeSpecificResultsFromItems, type PositionedPdfTextItem } from "./pdfExtract";
+import { extractFromLines, extractPdf, parseEngineOutSpecificResultsFromItems, parseTailpipeSpecificResultsFromItems, type PositionedPdfTextItem } from "./pdfExtract";
 
 const reportLines = [
   "Test cycle NRTC",
@@ -231,5 +231,12 @@ describe("Stage V PDF extraction", () => {
     expect(rec.status).toBe("review");
     expect(rec.values.co).toBeUndefined();
     expect(rec.values.pn).toBeUndefined();
+  });
+
+  it("returns a clear error for a file that is not a PDF", async () => {
+    const file = new File(["this is not a PDF"], "not-a-report.pdf", { type: "application/pdf" });
+    const record = await extractPdf(file, "NRTC");
+    expect(record.status).toBe("error");
+    expect(record.message).toContain("valid PDF");
   });
 });
