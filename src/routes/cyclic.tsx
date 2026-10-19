@@ -71,12 +71,38 @@ function Cyclic() {
     });
 
   const onFiles = async (files: FileList | null) => {
+    const selected = Array.from(files ?? []);
+    if (!selected.length) return;
     setBusy(true);
     const out = [];
-    for (const f of Array.from(files ?? [])) out.push(await extractPdf(f, s.cyclicCycle));
-    s.set({ cyclicRecords: [...useApp.getState().cyclicRecords, ...out] });
-    setBusy(false);
-    toast.success(`${out.length} PDF(s) processed — review the values below.`);
+    try {
+      for (const file of selected) {
+        try {
+          out.push(await extractPdf(file, s.cyclicCycle));
+        } catch (error) {
+          // Keep one bad file from interrupting processing for the remaining PDFs.
+          out.push({
+            id: uid(),
+            source: file.name,
+            status: "error" as const,
+            message: "Could not process this PDF: " + (error instanceof Error ? error.message : String(error)),
+            sectionText: "",
+            values: {},
+          });
+        }
+      }
+      s.set({ cyclicRecords: [...useApp.getState().cyclicRecords, ...out] });
+      const failed = out.filter((record) => record.status === "error");
+      const needsReview = out.filter((record) => record.status !== "extracted" && record.status !== "error");
+      if (failed.length) {
+        toast.error(`${failed.length} PDF(s) could not be read. Open Details beside each red error status to see the reason.`);
+      }
+      const extracted = out.length - failed.length - needsReview.length;
+      if (extracted > 0) toast.success(`${extracted} PDF(s) extracted. Review the values before exporting.`);
+      if (needsReview.length) toast.warning(`${needsReview.length} PDF(s) need manual review. Open Details for extraction notes.`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
