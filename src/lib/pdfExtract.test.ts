@@ -244,4 +244,50 @@ describe("Stage V PDF extraction", () => {
     expect(record.status).toBe("error");
     expect(record.message).toContain("valid PDF");
   });
+
+  it("extracts the Stage V summary values from the uploaded 2026 RMC report layout", () => {
+    const lines = [
+      "EU NRSC 9 mode ramped mode cycle",
+      "Stage V NRE (NRE-v-3/NRE-c-3)",
+      "Test date/time 2026/09/28 09:44:39",
+      "Test result 2026_06_855_35HP_RMC_WI_MAX_EGR_WI_DOC_OL",
+      "Overall status: Failed",
+      "Emission limits - Stage V NRE (NRE-v-3/NRE-c-3) Status Failed",
+      "Actual Limit Status Sample point Device",
+      "CO uncorrected [g/kWh] 0.051 5.000 Passed Tailpipe EBH02",
+      "NOX+HC [g/kWh] 2.334 4.700 Passed Tailpipe EBH02",
+      "Particulate mass [g/kWh] 0.078 0.015 Failed Tailpipe SPC47x",
+      "Particulate number [#/kWh] 2.06E+014 1.00E+012 Failed SPC47x AVL489",
+    ];
+    const record = extractFromLines(lines, "2026_06_855_35HP_RMC_WI_MAX_EGR_WI_DOC_OL.pdf", "RMC");
+    expect(record.status).toBe("extracted");
+    expect(record.values.co).toBe("0.051");
+    expect(record.values.coLimit).toBe("5.000");
+    expect(record.values.noxHc).toBe("2.334");
+    expect(record.values.pm).toBe("0.078");
+    expect(record.values.pn).toBe("2.06E+014");
+    expect(record.values.result).toBe("Fail");
+  });
+
+  it("extracts Stage V values from the uploaded 2026 NRTC report layout", () => {
+    const lines = [
+      "NRTC hot / hot",
+      "EU Non-road Transient Cycle",
+      "Test date/time 2026/10/01 13:38:04",
+      "Overall status: Failed",
+      "Emission limits - Stage V NRE (NRE-v-3/NRE-c-3) Status Failed",
+      "Actual Limit Status Sample point Device",
+      "CO uncorrected [g/kWh] 0.098 5.000 Passed Tailpipe EBH02",
+      "NOX+HC [g/kWh] 3.803 4.700 Passed Tailpipe EBH02",
+      "Particulate mass [g/kWh] 0.048 0.015 Failed Tailpipe SPC47x",
+      "Particulate number [#/kWh] 1.40E+014 1.00E+012 Failed SPC47x AVL489",
+    ];
+    const record = extractFromLines(lines, "2026_06_869_35HP_NRTC_WITH_MEAN_EGR.7243.pdf", "NRTC");
+    expect(record.status).toBe("extracted");
+    expect(record.values.co).toBe("0.098");
+    expect(record.values.noxHc).toBe("3.803");
+    expect(record.values.pm).toBe("0.048");
+    expect(record.values.pn).toBe("1.40E+014");
+    expect(record.values.result).toBe("Fail");
+  });
 });
