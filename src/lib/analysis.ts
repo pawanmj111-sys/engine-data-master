@@ -37,13 +37,23 @@ function inRange(x: Cell, lo: number | null, hi: number | null) {
 
 export type ParameterAliases = Record<string, string[]>;
 
-function normalizeParameterName(value: string): string {
-  return value
-    .trim()
-    .replace(/\s*\[[^\]]*\]\s*$/, "")
+function normalizeParameterName(value: string, ignoreUnitSuffix = false): string {
+  const trimmed = value.trim();
+  return (ignoreUnitSuffix ? trimmed.replace(/\s*\[[^\]]*\]\s*$/, "") : trimmed)
     .toLocaleLowerCase()
     .replace(/[\s_\-./\\]+/g, "")
     .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function parameterNamesMatch(header: string, candidate: string): boolean {
+  const headerHasUnit = /\s*\[[^\]]+\]\s*$/.test(header);
+  const candidateHasUnit = /\s*\[[^\]]+\]\s*$/.test(candidate);
+  // Never silently map a requested unit-qualified parameter to a different
+  // unit (for example kW to hp). A unit-less canonical name may match a
+  // dataset header that appends units.
+  if (candidateHasUnit && !headerHasUnit) return false;
+  const ignoreUnitSuffix = !candidateHasUnit;
+  return normalizeParameterName(header, ignoreUnitSuffix) === normalizeParameterName(candidate, ignoreUnitSuffix);
 }
 
 export function resolveParameterHeader(
@@ -72,9 +82,7 @@ export function resolveParameterHeader(
     if (exactNormalized) return exactNormalized;
   }
   for (const candidate of candidates) {
-    const normalized = normalizeParameterName(candidate);
-    if (!normalized) continue;
-    const match = ds.headers.find((header) => normalizeParameterName(header) === normalized);
+    const match = ds.headers.find((header) => parameterNamesMatch(header, candidate));
     if (match) return match;
   }
   return null;
