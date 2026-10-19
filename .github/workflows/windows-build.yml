@@ -47,11 +47,17 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build Windows EXEs
         run: bun run build:electron && bun x electron-builder --win --publish never
-      - name: Upload Windows EXE artifacts
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: EngineLab-Windows-EXE
-          path: |
-            release/*.exe
+          name: EngineLab-Setup-Installer
+          path: "release/EngineLab Setup 1.0.0.exe"
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: EngineLab-Portable-EXE
+          path: "release/EngineLab-1.0.0-portable.exe"
           if-no-files-found: error
           retention-days: 30
