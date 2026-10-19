@@ -1,10 +1,19 @@
 import type { CyclicCycle, CyclicRecord } from "./store";
 import { uid } from "./store";
 
+let pdfjsWorkerPort: Worker | null = null;
+
 async function loadPdfjs() {
   const pdfjs = await import("pdfjs-dist");
-  const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = worker;
+
+  // Bundle the worker as a Worker entry instead of making PDF.js dynamically
+  // import a URL at runtime. This is more reliable in Electron's app:// protocol,
+  // where a worker URL may fail to resolve and the fake-worker fallback also fails.
+  if (!pdfjsWorkerPort) {
+    const WorkerConstructor = (await import("pdfjs-dist/build/pdf.worker.min.mjs?worker")).default;
+    pdfjsWorkerPort = new WorkerConstructor();
+  }
+  pdfjs.GlobalWorkerOptions.workerPort = pdfjsWorkerPort;
   return pdfjs;
 }
 
