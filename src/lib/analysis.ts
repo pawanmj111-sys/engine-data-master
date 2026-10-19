@@ -92,8 +92,12 @@ export function getSeries(ds: Dataset, g: GraphConfig, col: string, aliases: Par
   const hi = g.rangeMax.trim() === "" ? null : Number(g.rangeMax);
   const x: Cell[] = [], y: (number | null)[] = [];
   for (const r of ds.rows) {
-    if (!inRange(r[xi], Number.isFinite(lo!) ? lo : null, Number.isFinite(hi!) ? hi : null)) continue;
-    x.push(typeof r[xi] === "string" ? (r[xi] as string).trim() : r[xi]);
+    const xValue = r[xi];
+    // Numeric X ranges are meaningful for time/numeric axes, but must not
+    // silently remove triggered rows whose mode labels are text values.
+    if (typeof xValue === "number" &&
+        !inRange(xValue, Number.isFinite(lo!) ? lo : null, Number.isFinite(hi!) ? hi : null)) continue;
+    x.push(typeof xValue === "string" ? xValue.trim() : xValue);
     y.push(toNum(r[yi]));
   }
   return { key: `${ds.id}::${col}`, dsId: ds.id, dsName: ds.name, col, x, y };
