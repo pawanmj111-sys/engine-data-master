@@ -37,14 +37,48 @@ function inRange(x: Cell, lo: number | null, hi: number | null) {
 
 export type ParameterAliases = Record<string, string[]>;
 
+function normalizeParameterName(value: string): string {
+  return value
+    .trim()
+    .replace(/\s*\[[^\]]*\]\s*$/, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .toLocaleLowerCase()
+    .replace(/[\s_\-./\\]+/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 export function resolveParameterHeader(
   ds: Dataset,
   selected: string,
   aliases: ParameterAliases = {},
 ): string | null {
-  const entry = Object.entries(aliases).find(([canonical, names]) => canonical === selected || names.includes(selected));
-  const candidates = entry ? [...new Set([entry[0], ...entry[1]])] : [selected];
-  return candidates.find((name) => ds.headers.includes(name)) ?? null;
+  if (!selected.trim()) return null;
+
+  // Keep an exact match first so unit-qualified or similarly named parameters
+  // stay distinct when the user selected their full header.
+  if (ds.headers.includes(selected)) return selected;
+
+  const selectedNorm = normalizeParameterName(selected);
+  const entry = Object.entries(aliases).find(([canonical, names]) =>
+    normalizeParameterName(canonical) === selectedNorm ||
+    names.some((name) => normalizeParameterName(name) === selectedNorm)
+  );
+  const candidates = entry ? [...new Set([entry[0], ...entry[1], selected])] : [selected];
+
+  // Match case/spacing variations first, then allow unit suffixes to differ.
+  for (const candidate of candidates) {
+    const exactNormalized = ds.headers.find((header) =>
+      header.trim().toLocaleLowerCase() === candidate.trim().toLocaleLowerCase()
+    );
+    if (exactNormalized) return exactNormalized;
+  }
+  for (const candidate of candidates) {
+    const normalized = normalizeParameterName(candidate);
+    if (!normalized) continue;
+    const match = ds.headers.find((header) => normalizeParameterName(header) === normalized);
+    if (match) return match;
+  }
+  return null;
 }
 
 export function getSeries(ds: Dataset, g: GraphConfig, col: string, aliases: ParameterAliases = {}): Series | null {
