@@ -59,14 +59,27 @@ function isLicensePayload(value: unknown): value is EngineLabLicense {
     typeof p.expiresAt === "string" && Number.isFinite(Date.parse(p.expiresAt));
 }
 
-/** Verify an offline license file signed by the EngineLab issuer key. */
+const LICENSE_KEY_PREFIX = "ENGINELAB-1";
+
+/** Accept either a compact copy/paste key or the legacy JSON license file. */
+function parseLicenseEnvelope(text: string): Partial<SignedLicenseEnvelope> | null {
+  const value = text.trim();
+  if (value.startsWith(LICENSE_KEY_PREFIX + ".")) {
+    const parts = value.split(".");
+    if (parts.length !== 3 || parts.some((part) => !part)) return null;
+    return { payload: parts[1], signature: parts[2] };
+  }
+  return JSON.parse(value) as Partial<SignedLicenseEnvelope>;
+}
+
+/** Verify an offline copy/paste license key or signed license file. */
 export async function verifyLicenseText(text: string): Promise<LicenseState> {
-  if (!text.trim()) return { status: "missing", message: "A license file is required to unlock EngineLab." };
+  if (!text.trim()) return { status: "missing", message: "Enter your EngineLab license key to unlock the software." };
 
   try {
-    const envelope = JSON.parse(text) as Partial<SignedLicenseEnvelope>;
-    if (typeof envelope.payload !== "string" || typeof envelope.signature !== "string") {
-      return { status: "invalid", message: "The license file format is not valid." };
+    const envelope = parseLicenseEnvelope(text);
+    if (!envelope || typeof envelope.payload !== "string" || typeof envelope.signature !== "string") {
+      return { status: "invalid", message: "The license key or file format is not valid." };
     }
 
     const cryptoApi = globalThis.crypto?.subtle;
@@ -100,6 +113,6 @@ export async function verifyLicenseText(text: string): Promise<LicenseState> {
 
     return { status: "valid", license: payload };
   } catch {
-    return { status: "invalid", message: "Could not read or verify this license file. Please select the original license JSON." };
+    return { status: "invalid", message: "Could not verify this license key. Check that you copied the full key exactly as supplied." };
   }
 }
