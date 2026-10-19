@@ -36,4 +36,72 @@ describe("parameter aliases", () => {
     expect(series?.col).toBe("FC RATE");
     expect(series?.y).toEqual([3.1, 3.4]);
   });
+
+  it("matches aliases despite case, separators, and unit suffix differences", () => {
+    const dataset = {
+      id: "dataset-b",
+      name: "Test B",
+      version: 1,
+      headers: ["MODE", "fb val [kg/h]"],
+      rows: [["Mode 1", 2.5], ["Mode 2", 2.8]],
+    } as Dataset;
+    const graph = {
+      id: "graph-b",
+      title: "Fuel rate",
+      subtitle: "",
+      xCol: "mode",
+      yCols: ["fc-rate"],
+      datasetIds: ["dataset-b"],
+      xLabel: "",
+      yLabel: "",
+      legend: "bottom",
+      mode: "lines",
+      styles: {},
+      hidden: [],
+      rangeMin: "",
+      rangeMax: "",
+      showDiff: false,
+      diffMode: "abs",
+      refId: "dataset-b",
+      align: "exact",
+    } as GraphConfig;
+
+    const series = getSeries(dataset, graph, "fc-rate", { "FC RATE": ["FB_VAL"] });
+    expect(series?.x).toEqual(["Mode 1", "Mode 2"]);
+    expect(series?.y).toEqual([2.5, 2.8]);
+  });
+
+  it("does not discard categorical triggered rows when numeric X range fields are set", () => {
+    const dataset = {
+      id: "dataset-c",
+      name: "Triggered",
+      version: 1,
+      headers: ["Mode", "Torque"],
+      rows: [["Idle", 12], ["Rated", 30]],
+    } as Dataset;
+    const graph = {
+      id: "graph-c",
+      title: "Triggered comparison",
+      subtitle: "",
+      xCol: "Mode",
+      yCols: ["Torque"],
+      datasetIds: ["dataset-c"],
+      xLabel: "",
+      yLabel: "",
+      legend: "bottom",
+      mode: "lines",
+      styles: {},
+      hidden: [],
+      rangeMin: "0",
+      rangeMax: "10",
+      showDiff: false,
+      diffMode: "abs",
+      refId: "dataset-c",
+      align: "exact",
+    } as GraphConfig;
+
+    const series = getSeries(dataset, graph, "Torque");
+    expect(series?.x).toEqual(["Idle", "Rated"]);
+    expect(series?.y).toEqual([12, 30]);
+  });
 });
