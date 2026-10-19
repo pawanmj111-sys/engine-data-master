@@ -104,4 +104,36 @@ describe("parameter aliases", () => {
     expect(series?.x).toEqual(["Idle", "Rated"]);
     expect(series?.y).toEqual([12, 30]);
   });
+
+  it("does not silently match parameters with different explicit units", () => {
+    const dataset = {
+      id: "dataset-units",
+      name: "Power test",
+      version: 1,
+      headers: ["Time", "Power [kW]"],
+      rows: [[0, 10]],
+    } as Dataset;
+    const graph = {
+      id: "graph-units",
+      title: "Power",
+      subtitle: "",
+      xCol: "Time",
+      yCols: ["Power [hp]"],
+      datasetIds: ["dataset-units"],
+      xLabel: "",
+      yLabel: "",
+      legend: "bottom",
+      mode: "lines",
+      styles: {},
+      hidden: [],
+      rangeMin: "",
+      rangeMax: "",
+      showDiff: false,
+      diffMode: "abs",
+      refId: "dataset-units",
+      align: "exact",
+    } as GraphConfig;
+
+    expect(getSeries(dataset, graph, "Power [hp]")).toBeNull();
+  });
 });
