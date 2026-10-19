@@ -67,10 +67,9 @@ export function resolveParameterHeader(
   // stay distinct when the user selected their full header.
   if (ds.headers.includes(selected)) return selected;
 
-  const selectedNorm = normalizeParameterName(selected);
   const entry = Object.entries(aliases).find(([canonical, names]) =>
-    normalizeParameterName(canonical) === selectedNorm ||
-    names.some((name) => normalizeParameterName(name) === selectedNorm)
+    parameterNamesMatch(canonical, selected) ||
+    names.some((name) => parameterNamesMatch(name, selected))
   );
   const candidates = entry ? [...new Set([entry[0], ...entry[1], selected])] : [selected];
 
