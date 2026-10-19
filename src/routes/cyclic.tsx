@@ -154,7 +154,7 @@ function Cyclic() {
                       <Inp className={`h-7 w-full min-w-16 text-xs ${!r.values[c.key] && c.key !== "sn" ? "bg-warning/40" : ""}`} value={c.key === "sn" ? r.values.sn ?? String(i + 1) : r.values[c.key] ?? ""} onChange={(e) => setVal(r.id, c.key, e.target.value)} />
                     </td>
                   ))}
-                  <td className="p-1"><div className="font-mono">{r.source}</div><span className={r.status === "extracted" ? "text-success" : "text-destructive"}>{r.status}</span></td>
+                  <td className="p-1"><div className="font-mono">{r.source}</div><span className={r.status === "extracted" ? "text-success" : r.status === "error" ? "text-destructive" : "text-warning"}>{r.status === "review" ? "needs review" : r.status === "no-text" ? "no text / manual entry" : r.status}</span></td>
                   <td className="whitespace-nowrap p-1">
                     <button className="text-primary" onClick={() => setOpen(open === r.id ? "" : r.id)}>Details</button>{" · "}
                     <button className="text-destructive" onClick={() => s.set({ cyclicRecords: s.cyclicRecords.filter((x) => x.id !== r.id) })}>Remove</button>
