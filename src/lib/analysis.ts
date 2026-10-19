@@ -41,7 +41,6 @@ function normalizeParameterName(value: string): string {
   return value
     .trim()
     .replace(/\s*\[[^\]]*\]\s*$/, "")
-    .replace(/\s*\([^)]*\)\s*$/, "")
     .toLocaleLowerCase()
     .replace(/[\s_\-./\\]+/g, "")
     .replace(/[^\p{L}\p{N}]/gu, "");
