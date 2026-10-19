@@ -57,7 +57,8 @@ async function readPdfData(file: File): Promise<{ lines: string[]; items: Positi
     // Keep otherwise-readable text even when the document does not provide coordinates.
     lines.push(...looseText);
   }
-  if (!lines.some((line) => line.trim())) throw new Error("No selectable text was found in this PDF. It may be a scanned image or password-protected.");
+  // Empty text is returned to extractFromLines, which labels scanned/image-only
+  // reports as "no-text" instead of treating them as an unexpected reader crash.
   return { lines, items: positioned };
 }
 
