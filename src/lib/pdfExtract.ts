@@ -16,26 +16,48 @@ export interface PositionedPdfTextItem {
 }
 
 async function readPdfData(file: File): Promise<{ lines: string[]; items: PositionedPdfTextItem[] }> {
+  if (!file || file.size === 0) throw new Error("The selected PDF is empty.");
   const pdfjs = await loadPdfjs();
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const data = new Uint8Array(await file.arrayBuffer());
+  if (data.length < 5 || String.fromCharCode(...data.slice(0, 5)) !== "%PDF-") {
+    throw new Error("This file does not appear to be a valid PDF. Please select the original PDF report.");
+  }
+  const pdf = await pdfjs.getDocument({ data }).promise;
+  if (!pdf.numPages) throw new Error("The PDF has no readable pages.");
+
   const lines: string[] = [];
   const positioned: PositionedPdfTextItem[] = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
     const rows = new Map<number, { x: number; s: string }[]>();
-    for (const it of tc.items as { str: string; transform: number[] }[]) {
-      if (!it.str?.trim()) continue;
-      const x = it.transform[4];
-      const y = it.transform[5];
-      positioned.push({ page: p, x, y, text: it.str.trim() });
+    const looseText: string[] = [];
+    for (const raw of tc.items as unknown[]) {
+      if (!raw || typeof raw !== "object") continue;
+      const it = raw as { str?: unknown; transform?: unknown };
+      if (typeof it.str !== "string" || !it.str.trim()) continue;
+      const text = it.str.trim();
+      const transform = Array.isArray(it.transform) ? it.transform : [];
+      const x = typeof transform[4] === "number" && Number.isFinite(transform[4]) ? transform[4] : null;
+      const y = typeof transform[5] === "number" && Number.isFinite(transform[5]) ? transform[5] : null;
+
+      // PDF.js also returns marked-content entries and some unusual text entries
+      // without full transforms. They should not make the entire PDF fail.
+      if (x === null || y === null) {
+        looseText.push(text);
+        continue;
+      }
+      positioned.push({ page: p, x, y, text });
       const rowY = Math.round(y / 2) * 2;
       if (!rows.has(rowY)) rows.set(rowY, []);
-      rows.get(rowY)!.push({ x, s: it.str.trim() });
+      rows.get(rowY)!.push({ x, s: text });
     }
     [...rows.entries()].sort((a, b) => b[0] - a[0])
-      .forEach(([, items]) => lines.push(items.sort((a, b) => a.x - b.x).map((i) => i.s).join("  ")));
+      .forEach(([, rowItems]) => lines.push(rowItems.sort((a, b) => a.x - b.x).map((i) => i.s).join("  ")));
+    // Keep otherwise-readable text even when the document does not provide coordinates.
+    lines.push(...looseText);
   }
+  if (!lines.some((line) => line.trim())) throw new Error("No selectable text was found in this PDF. It may be a scanned image or password-protected.");
   return { lines, items: positioned };
 }
 
