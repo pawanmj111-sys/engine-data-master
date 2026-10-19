@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useApp, type GraphConfig } from "@/lib/store";
+import { useApp, uid, type GraphConfig } from "@/lib/store";
 import { readFileSheets } from "@/lib/parse";
 import { buildFigure, exportGraphData, figureToPng, safe, statsRows, STATS_HEAD, traceStyle } from "@/lib/figure";
-import { downloadDataUrl } from "@/lib/report";
+import { downloadDataUrl, exportPdf } from "@/lib/report";
+import { buildCompareReport, exportCompareWorkbook } from "@/lib/builders";
 import { Btn, Field, Inp, PageHeader, Panel, Segmented, Sel, Warnings } from "@/components/kit";
 import { DatasetRow } from "@/components/DatasetRow";
 import { FrontEditor, FtpFrontEditor } from "@/components/FrontPageEditor";
@@ -25,7 +26,17 @@ export const Route = createFileRoute("/compare")({
 function Compare() {
   const s = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
-  const allHeaders = useMemo(() => [...new Set(s.datasets.flatMap((d) => d.headers))], [s.datasets]);
+  const templateRef = useRef<HTMLInputElement>(null);
+  const templateActionRef = useRef<"load" | "pdf" | "xlsx">("load");
+  const [selectedCyclicRecordId, setSelectedCyclicRecordId] = useState("");
+  const [aliasCanonical, setAliasCanonical] = useState("");
+  const [aliasSynonyms, setAliasSynonyms] = useState("");
+  const allHeaders = useMemo(() => [...new Set([
+    ...s.datasets.flatMap((d) => d.headers),
+    ...Object.keys(s.parameterAliases),
+    ...Object.values(s.parameterAliases).flat(),
+  ])], [s.datasets, s.parameterAliases]);
+  const selectedCyclicRecord = s.cyclicRecords.find((record) => record.id === selectedCyclicRecordId) ?? s.cyclicRecords[s.cyclicRecords.length - 1];
   const g = s.graphs.find((x) => x.id === s.activeGraph) ?? s.graphs[0];
 
   const onFiles = async (files: FileList | null) => {
@@ -33,6 +44,97 @@ function Compare() {
       try { s.addDataset(f.name, await readFileSheets(f)); toast.success(`Loaded ${f.name}`); }
       catch (e) { toast.error(`${f.name}: ${(e as Error).message}`); }
     }
+  };
+
+  const saveTemplate = () => {
+    const payload = {
+      format: "EngineDataMasterGraphTemplate",
+      version: 1,
+      cycle: s.cycle,
+      dataType: s.dataType,
+      parameterAliases: s.parameterAliases,
+      graphs: s.graphs.map((graph) => ({ ...graph, datasetIds: [], refId: "", styles: {}, hidden: [] })),
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "engine-data-master-template.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Template saved as a JSON file. Dataset contents are not included.");
+  };
+
+  const loadTemplate = async (file: File, exportAfterLoad: "load" | "pdf" | "xlsx" = "load") => {
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
+      if (parsed.format !== "EngineDataMasterGraphTemplate" || parsed.version !== 1 || !Array.isArray(parsed.graphs)) {
+        throw new Error("This is not a supported Engine Data Master template.");
+      }
+      const validGraphs = parsed.graphs.filter((candidate): candidate is GraphConfig => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+        const graph = candidate as Partial<GraphConfig>;
+        return typeof graph.title === "string" &&
+          typeof graph.xCol === "string" &&
+          Array.isArray(graph.yCols) &&
+          Array.isArray(graph.datasetIds) &&
+          typeof graph.subtitle === "string" &&
+          typeof graph.xLabel === "string" &&
+          typeof graph.yLabel === "string";
+      });
+      if (!validGraphs.length) throw new Error("No valid graph configurations were found in this template.");
+      const graphs = validGraphs.map((graph) => ({
+        ...graph,
+        id: uid(),
+        datasetIds: s.datasets.map((d) => d.id),
+        refId: s.datasets[0]?.id ?? "",
+        styles: {},
+        hidden: [],
+      }));
+      const cycle = ["FTP", "NRTC", "NRSC", "RMC"].includes(parsed.cycle) ? parsed.cycle as typeof s.cycle : s.cycle;
+      const dataType = parsed.dataType === "triggered" ? "triggered" as const : "1hz" as const;
+      const aliases: Record<string, string[]> = {};
+      if (parsed.parameterAliases && typeof parsed.parameterAliases === "object" && !Array.isArray(parsed.parameterAliases)) {
+        for (const [key, value] of Object.entries(parsed.parameterAliases)) {
+          if (key.trim() && Array.isArray(value)) aliases[key] = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+        }
+      }
+      s.set({ cycle, dataType, graphs, activeGraph: graphs[0].id, parameterAliases: aliases });
+      window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(aliases));
+      toast.success(`Loaded ${graphs.length} graph configuration(s). Check any parameter-mapping warnings for the selected datasets.`);
+      if (exportAfterLoad === "pdf") {
+        const current = useApp.getState();
+        const doc = await buildCompareReport(current);
+        await exportPdf(doc, `${current.cycle}_comparison_report.pdf`);
+        toast.success("Comparison PDF exported from the loaded template.");
+      } else if (exportAfterLoad === "xlsx") {
+        exportCompareWorkbook(useApp.getState());
+        toast.success("Comparison Excel workbook exported from the loaded template.");
+      }
+    } catch (e) {
+      toast.error((e as Error).message || "Could not load template.");
+    }
+  };
+
+  const saveAlias = () => {
+    const canonical = aliasCanonical.trim();
+    const alternatives = [...new Set(aliasSynonyms.split(",").map((v) => v.trim()).filter((v) => v && v !== canonical))];
+    if (!canonical || !alternatives.length) {
+      toast.error("Enter a canonical parameter and at least one alternate column name.");
+      return;
+    }
+    const next = { ...s.parameterAliases, [canonical]: alternatives };
+    s.set({ parameterAliases: next });
+    window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(next));
+    setAliasCanonical("");
+    setAliasSynonyms("");
+    toast.success(`Saved mapping for ${canonical}.`);
+  };
+
+  const removeAlias = (canonical: string) => {
+    const next = { ...s.parameterAliases };
+    delete next[canonical];
+    s.set({ parameterAliases: next });
+    window.localStorage.setItem("engine-data-master:parameter-aliases", JSON.stringify(next));
   };
 
   return (
@@ -64,7 +166,28 @@ function Compare() {
         )}
       </Panel>
 
-      <Panel title="4 · Graphs" actions={<>
+      <Panel title="4 · Reusable templates & parameter mappings">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Btn variant="primary" disabled={!s.graphs.length} onClick={saveTemplate}>Save graph template (JSON)</Btn>
+          <input ref={templateRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadTemplate(file, templateActionRef.current); e.target.value = ""; }} />
+          <Btn onClick={() => { templateActionRef.current = "load"; templateRef.current?.click(); }}>Load template</Btn>
+          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "pdf"; templateRef.current?.click(); }}>Load template + export PDF</Btn>
+          <Btn disabled={!s.datasets.length} onClick={() => { templateActionRef.current = "xlsx"; templateRef.current?.click(); }}>Load template + export Excel</Btn>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">Templates save cycle, data type, graph settings, and parameter aliases—not uploaded Excel contents. You can move the JSON template between machines.</p>
+        <div className="grid gap-2 md:grid-cols-[1fr_1.4fr_auto]">
+          <Field label="Canonical parameter"><Inp value={aliasCanonical} placeholder="e.g. FC RATE" onChange={(e) => setAliasCanonical(e.target.value)} /></Field>
+          <Field label="Alternate Excel column names (comma-separated)"><Inp value={aliasSynonyms} placeholder="e.g. FB_VAL, Fuel Flow" onChange={(e) => setAliasSynonyms(e.target.value)} /></Field>
+          <div className="flex items-end"><Btn onClick={saveAlias}>Save mapping</Btn></div>
+        </div>
+        {Object.keys(s.parameterAliases).length > 0 && <div className="mt-3 space-y-1">
+          {Object.entries(s.parameterAliases).map(([canonical, aliases]) => <div key={canonical} className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1 text-xs">
+            <span><strong>{canonical}</strong> ↔ {aliases.join(", ")}</span><Btn onClick={() => removeAlias(canonical)}>Remove</Btn>
+          </div>)}
+        </div>}
+      </Panel>
+
+      <Panel title="5 · Graphs" actions={<>
         {s.graphs.map((x) => (
           <Btn key={x.id} variant={x.id === g?.id ? "primary" : "default"} onClick={() => s.set({ activeGraph: x.id })}>{x.title}</Btn>
         ))}
@@ -74,6 +197,49 @@ function Compare() {
       </Panel>
 
       <Panel title={`Report front page — ${s.cycle}`}>
+        <div className="mb-4 rounded border p-3">
+          <div className="mb-2 font-medium">Use a PDF Cyclic Summary on this comparison front page</div>
+          <p className="mb-3 text-xs text-muted-foreground">Import metadata and available emission summary values from a PDF already extracted in the PDF Cyclic Summary page. Missing source values stay blank.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="PDF summary record" className="min-w-72 flex-1">
+              <Sel value={selectedCyclicRecord?.id ?? ""} onChange={(e) => setSelectedCyclicRecordId(e.target.value)}>
+                <option value="">— select a processed PDF —</option>
+                {s.cyclicRecords.map((record) => <option key={record.id} value={record.id}>{record.source} ({record.status})</option>)}
+              </Sel>
+            </Field>
+            <Btn disabled={!selectedCyclicRecord} onClick={() => {
+              if (!selectedCyclicRecord) return;
+              const record = selectedCyclicRecord;
+              const recordCycle = ["NRTC", "NRSC", "RMC"].includes(record.values.cycle) ? record.values.cycle as typeof s.cyclicCycle : s.cyclicCycle;
+              const front = { ...s.compareFront, fields: [...s.compareFront.fields] };
+              const imported: [string, string][] = [
+                ["Date", record.values.date ?? ""],
+                ["Engine Model", record.values.engineModel ?? record.values.engine ?? ""],
+                ["Engine Number", record.values.engineNumber ?? ""],
+                ["Test Cycle", recordCycle],
+                ["Test ID", record.values.testId ?? ""],
+                ["Test Name", record.values.testName ?? ""],
+                ["Test File Name", record.source],
+                ["PDF Summary Result", record.values.result ?? ""],
+                ["CO Actual", record.values.co ?? ""],
+                ["CO Limit", record.values.coLimit ?? ""],
+                ["NOx+HC Actual", record.values.noxHc ?? ""],
+                ["NOx+HC Limit", record.values.noxHcLimit ?? ""],
+                ["PM Actual", record.values.pm ?? ""],
+                ["PM Limit", record.values.pmLimit ?? ""],
+                ["PN Actual", record.values.pn ?? ""],
+                ["PN Limit", record.values.pnLimit ?? ""],
+              ].filter(([, value]) => value.trim().length > 0);
+              for (const [label, value] of imported) {
+                const found = front.fields.findIndex((field) => field.label.trim().toLowerCase() === label.toLowerCase());
+                if (found >= 0) front.fields[found] = { ...front.fields[found], value, hidden: false };
+                else front.fields.push({ id: uid(), label, value, hidden: false, custom: true });
+              }
+              s.set({ cycle: recordCycle, compareFront: front });
+              toast.success("PDF Cyclic Summary values copied to the Excel comparison front page. Review the fields before export.");
+            }}>Use PDF summary on front page</Btn>
+          </div>
+        </div>
         {s.cycle === "FTP"
           ? <FtpFrontEditor value={s.ftpFront} onChange={(ftpFront) => s.set({ ftpFront })} />
           : <FrontEditor value={s.compareFront} onChange={(compareFront) => s.set({ compareFront })} />}
@@ -88,8 +254,10 @@ function Compare() {
 
 function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
   const s = useApp();
+  const [parameterSearch, setParameterSearch] = useState("");
+  const matchingHeaders = useMemo(() => headers.filter((h) => h.toLowerCase().includes(parameterSearch.trim().toLowerCase())), [headers, parameterSearch]);
   const up = (p: Partial<GraphConfig>) => s.updateGraph(g.id, p);
-  const fig = useMemo(() => buildFigure(g, s.datasets, s.dataType), [g, s.datasets, s.dataType]);
+  const fig = useMemo(() => buildFigure(g, s.datasets, s.dataType, false, s.parameterAliases), [g, s.datasets, s.dataType, s.parameterAliases]);
   const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const keys = fig.analysis.series.map((x) => x.key);
 
@@ -98,15 +266,16 @@ function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
       <div className="space-y-3">
         <Field label="Title"><Inp value={g.title} onChange={(e) => up({ title: e.target.value })} /></Field>
         <Field label="Subtitle"><Inp value={g.subtitle} onChange={(e) => up({ subtitle: e.target.value })} /></Field>
+        <Field label="Search parameters"><Inp value={parameterSearch} placeholder="Search a parameter (e.g. FB_VAL, FC RATE)" onChange={(e) => setParameterSearch(e.target.value)} /></Field>
         <Field label={s.dataType === "triggered" ? "X-axis (trigger / mode column)" : "X-axis (time column)"}>
           <Sel value={g.xCol} onChange={(e) => up({ xCol: e.target.value })}>
             <option value="">— select —</option>
-            {headers.map((h) => <option key={h}>{h}</option>)}
+            {matchingHeaders.map((h) => <option key={h}>{h}</option>)}
           </Sel>
         </Field>
         <Field label="Y parameters (multi-select)">
           <div className="max-h-44 overflow-auto rounded border bg-background p-1 text-sm">
-            {headers.filter((h) => h !== g.xCol).map((h) => (
+            {matchingHeaders.filter((h) => h !== g.xCol).map((h) => (
               <label key={h} className="flex items-center gap-2 px-1 py-0.5 text-foreground">
                 <input type="checkbox" checked={g.yCols.includes(h)} onChange={() => up({ yCols: toggle(g.yCols, h) })} />{h}
               </label>
@@ -145,7 +314,7 @@ function GraphEditor({ g, headers }: { g: GraphConfig; headers: string[] }) {
       </div>
       <div className="min-w-0 space-y-3">
         <Warnings items={fig.analysis.warnings} />
-        <Plot data={fig.data} layout={fig.layout} className="h-[520px] w-full rounded border" />
+        <Plot key={g.id} historyKey={g.id} data={fig.data} layout={fig.layout} className="h-[520px] w-full rounded border" />
         <div className="flex flex-wrap gap-2">
           <Btn onClick={async () => downloadDataUrl(await figureToPng(fig), `${safe(g.title)}.png`)}>Download PNG</Btn>
           <Btn onClick={() => exportGraphData(fig.analysis, g, s.datasets, "xlsx")}>Export Excel</Btn>

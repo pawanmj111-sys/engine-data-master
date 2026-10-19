@@ -360,3 +360,26 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Offline license activation
+
+EngineLab now requires an issuer-signed license JSON before opening the application. The license includes a customer name, license ID, issue timestamp, and expiry timestamp. Expired or modified license files are rejected. The app verifies licenses locally and does not send PDF or Excel files to a licensing server.
+
+### Issue a license (administrator only)
+
+1. Keep `engine-lab-license-private.pem` in a secure administrator-only folder. Never commit or send this private key with the app.
+2. Install Node.js on the administrator computer.
+3. Copy `scripts/issue-license.cjs` from this repository to that computer.
+4. Run:
+
+   ```bash
+   node scripts/issue-license.cjs "Customer or Company" 2027-10-19 > customer-license.json
+   ```
+
+   Replace the customer and expiry date. Expiry is valid through the end of the specified date (UTC). To choose a private-key file at another path, set `ENGINELAB_LICENSE_PRIVATE_KEY`.
+5. Send only the resulting `customer-license.json` to that customer. The customer activates it in EngineLab's license screen.
+
+The private issuer key is intentionally not stored in this repository. Keep a secure backup because licenses generated with a different key will not verify in this application.
+
+**Deployment note:** This is offline signature-and-expiry licensing. It does not provide online revocation, central device limits, payment processing, or protection against a technically skilled person patching the application. Those requirements need a backend activation service.
+

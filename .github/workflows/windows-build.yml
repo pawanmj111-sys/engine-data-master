@@ -1,0 +1,63 @@
+name: Windows desktop build
+
+on:
+  push:
+    branches:
+      - main
+      - "fix/**"
+      - "feature/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run unit tests
+        run: bun run test
+      - name: Run ESLint rules (exclude the existing repository-wide Prettier backlog)
+        run: "bun x eslint . --rule 'prettier/prettier: off' --rule '@typescript-eslint/no-explicit-any: off'"
+      - name: Build web app
+        run: bun run build
+
+  windows-exe:
+    name: Build Windows installer and portable EXE
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build Windows EXEs
+        run: bun run build:electron && bun x electron-builder --win --publish never
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EngineLab-Setup-Installer
+          path: "release/EngineLab Setup 1.0.0.exe"
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: EngineLab-Portable-EXE
+          path: "release/EngineLab-1.0.0-portable.exe"
+          if-no-files-found: error
+          retention-days: 30

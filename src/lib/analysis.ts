@@ -35,16 +35,75 @@ function inRange(x: Cell, lo: number | null, hi: number | null) {
   return (lo === null || n >= lo) && (hi === null || n <= hi);
 }
 
-export function getSeries(ds: Dataset, g: GraphConfig, col: string): Series | null {
-  const xi = ds.headers.indexOf(g.xCol);
-  const yi = ds.headers.indexOf(col);
+export type ParameterAliases = Record<string, string[]>;
+
+function normalizeParameterName(value: string, ignoreUnitSuffix = false): string {
+  const trimmed = value.trim();
+  return (ignoreUnitSuffix ? trimmed.replace(/\s*\[[^\]]*\]\s*$/, "") : trimmed)
+    .toLocaleLowerCase()
+    .replace(/[\s_\-./\\]+/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function parameterNamesMatch(header: string, candidate: string): boolean {
+  const headerHasUnit = /\s*\[[^\]]+\]\s*$/.test(header);
+  const candidateHasUnit = /\s*\[[^\]]+\]\s*$/.test(candidate);
+  // Never silently map a requested unit-qualified parameter to a different
+  // unit (for example kW to hp). A unit-less canonical name may match a
+  // dataset header that appends units.
+  if (candidateHasUnit && !headerHasUnit) return false;
+  const ignoreUnitSuffix = !candidateHasUnit;
+  return normalizeParameterName(header, ignoreUnitSuffix) === normalizeParameterName(candidate, ignoreUnitSuffix);
+}
+
+export function resolveParameterHeader(
+  ds: Dataset,
+  selected: string,
+  aliases: ParameterAliases = {},
+): string | null {
+  if (!selected.trim()) return null;
+
+  // Keep an exact match first so unit-qualified or similarly named parameters
+  // stay distinct when the user selected their full header.
+  if (ds.headers.includes(selected)) return selected;
+
+  const entry = Object.entries(aliases).find(([canonical, names]) =>
+    parameterNamesMatch(canonical, selected) ||
+    names.some((name) => parameterNamesMatch(name, selected))
+  );
+  const candidates = entry ? [...new Set([entry[0], ...entry[1], selected])] : [selected];
+
+  // Match case/spacing variations first, then allow unit suffixes to differ.
+  for (const candidate of candidates) {
+    const exactNormalized = ds.headers.find((header) =>
+      header.trim().toLocaleLowerCase() === candidate.trim().toLocaleLowerCase()
+    );
+    if (exactNormalized) return exactNormalized;
+  }
+  for (const candidate of candidates) {
+    const match = ds.headers.find((header) => parameterNamesMatch(header, candidate));
+    if (match) return match;
+  }
+  return null;
+}
+
+export function getSeries(ds: Dataset, g: GraphConfig, col: string, aliases: ParameterAliases = {}): Series | null {
+  const xHeader = resolveParameterHeader(ds, g.xCol, aliases);
+  const yHeader = resolveParameterHeader(ds, col, aliases);
+  if (!xHeader || !yHeader) return null;
+  const xi = ds.headers.indexOf(xHeader);
+  const yi = ds.headers.indexOf(yHeader);
   if (xi < 0 || yi < 0) return null;
   const lo = g.rangeMin.trim() === "" ? null : Number(g.rangeMin);
   const hi = g.rangeMax.trim() === "" ? null : Number(g.rangeMax);
   const x: Cell[] = [], y: (number | null)[] = [];
   for (const r of ds.rows) {
-    if (!inRange(r[xi], Number.isFinite(lo!) ? lo : null, Number.isFinite(hi!) ? hi : null)) continue;
-    x.push(typeof r[xi] === "string" ? (r[xi] as string).trim() : r[xi]);
+    const xValue = r[xi];
+    // Numeric X ranges are meaningful for time/numeric axes, but must not
+    // silently remove triggered rows whose mode labels are text values.
+    if (typeof xValue === "number" &&
+        !inRange(xValue, Number.isFinite(lo!) ? lo : null, Number.isFinite(hi!) ? hi : null)) continue;
+    x.push(typeof xValue === "string" ? xValue.trim() : xValue);
     y.push(toNum(r[yi]));
   }
   return { key: `${ds.id}::${col}`, dsId: ds.id, dsName: ds.name, col, x, y };
@@ -150,24 +209,28 @@ export interface GraphAnalysis {
   warnings: string[];
 }
 
-export function analyzeGraph(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz"): GraphAnalysis {
+export function analyzeGraph(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz", aliases: ParameterAliases = {}): GraphAnalysis {
   const warnings: string[] = [];
   const dss = g.datasetIds.map((id) => datasets.find((d) => d.id === id)).filter(Boolean) as Dataset[];
   const series: Series[] = [];
   if (!g.xCol) warnings.push("Select an X-axis parameter.");
   for (const ds of dss) {
-    if (g.xCol && !ds.headers.includes(g.xCol))
-      warnings.push(`X-axis "${g.xCol}" not found in "${ds.name}" (v${ds.version}). Select a replacement parameter.`);
+    if (g.xCol && !resolveParameterHeader(ds, g.xCol, aliases))
+      warnings.push(`X-axis "${g.xCol}" not found in "${ds.name}" (v${ds.version}). Add a parameter mapping or select a replacement.`);
+    else if (g.xCol && resolveParameterHeader(ds, g.xCol, aliases) !== g.xCol)
+      warnings.push(`X-axis "${g.xCol}" uses mapped column "${resolveParameterHeader(ds, g.xCol, aliases)}" in "${ds.name}".`);
     for (const col of g.yCols) {
-      if (!ds.headers.includes(col)) {
-        warnings.push(`Parameter "${col}" not found in "${ds.name}" (v${ds.version}). Select a replacement parameter.`);
+      const resolved = resolveParameterHeader(ds, col, aliases);
+      if (!resolved) {
+        warnings.push(`Parameter "${col}" not found in "${ds.name}" (v${ds.version}). Add a parameter mapping or select a replacement.`);
         continue;
       }
-      const s = getSeries(ds, g, col);
+      if (resolved !== col) warnings.push(`Parameter "${col}" uses mapped column "${resolved}" in "${ds.name}".`);
+      const s = getSeries(ds, g, col, aliases);
       if (s) series.push(s);
     }
-    if (dataType === "1hz" && g.xCol && ds.headers.includes(g.xCol)) {
-      const xi = ds.headers.indexOf(g.xCol);
+    if (dataType === "1hz" && g.xCol && resolveParameterHeader(ds, g.xCol, aliases)) {
+      const xi = ds.headers.indexOf(resolveParameterHeader(ds, g.xCol, aliases)!);
       const t = checkTime(ds.rows.map((r) => r[xi]));
       const parts: string[] = [];
       if (t.missing) parts.push(`${t.missing} missing timestamps`);

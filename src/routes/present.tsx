@@ -25,7 +25,7 @@ function Present() {
   const root = useRef<HTMLDivElement>(null);
   const n = s.graphs.length;
   const g = s.graphs[Math.min(i, n - 1)];
-  const fig = useMemo(() => (g ? buildFigure(g, s.datasets, s.dataType, true) : null), [g, s.datasets, s.dataType]);
+  const fig = useMemo(() => (g ? buildFigure(g, s.datasets, s.dataType, true, s.parameterAliases) : null), [g, s.datasets, s.dataType, s.parameterAliases]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") setI((x) => Math.min(n - 1, x + 1));

@@ -3,8 +3,33 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useApp, uid, type CyclicCycle } from "@/lib/store";
 import { extractPdf } from "@/lib/pdfExtract";
+import { exportCyclicWorkbook } from "@/lib/builders";
 import { Btn, Inp, PageHeader, Panel, Segmented, Field } from "@/components/kit";
 import { FrontEditor } from "@/components/FrontPageEditor";
+
+const ENGINE_OUT_FIELDS: { key: string; label: string }[] = [
+  { key: "engineOutCH4", label: "CH4" },
+  { key: "engineOutCO2", label: "CO2" },
+  { key: "engineOutCOH", label: "COH" },
+  { key: "engineOutCO", label: "CO (COH - EngineOut)" },
+  { key: "engineOutTHC", label: "THC" },
+  { key: "engineOutNO2", label: "NO2 (NOX,NO - EngineOut)" },
+  { key: "engineOutNOX", label: "NOX" },
+  { key: "engineOutNO", label: "NO" },
+  { key: "engineOutO2", label: "O2" },
+];
+
+const TAILPIPE_FIELDS: { key: string; label: string }[] = [
+  { key: "tailpipeCH4", label: "CH4" },
+  { key: "tailpipeCO2", label: "CO2" },
+  { key: "tailpipeCOL", label: "COL" },
+  { key: "tailpipeCO", label: "CO (COL - Tailpipe)" },
+  { key: "tailpipeTHC", label: "THC" },
+  { key: "tailpipeNO2", label: "NO2 (NOX,NO - Tailpipe)" },
+  { key: "tailpipeNOX", label: "NOX" },
+  { key: "tailpipeNO", label: "NO" },
+  { key: "tailpipeO2", label: "O2" },
+];
 
 export const Route = createFileRoute("/cyclic")({
   head: () => ({
@@ -25,20 +50,80 @@ function Cyclic() {
   const [open, setOpen] = useState("");
   const cols = s.cyclicColumns;
   const setVal = (id: string, k: string, v: string) =>
-    s.set({ cyclicRecords: s.cyclicRecords.map((r) => (r.id === id ? { ...r, values: { ...r.values, [k]: v } } : r)) });
+    s.set({
+      cyclicRecords: s.cyclicRecords.map((record) => {
+        if (record.id !== id) return record;
+        const values = { ...record.values, [k]: v };
+        if (ENGINE_OUT_FIELDS.some((field) => field.key === k)) {
+          values.engineOutDetails = ENGINE_OUT_FIELDS
+            .filter((field) => values[field.key] !== undefined)
+            .map((field) => field.label + ": " + values[field.key] + " g/kWh")
+            .join("\n");
+        }
+        if (TAILPIPE_FIELDS.some((field) => field.key === k)) {
+          values.tailpipeDetails = TAILPIPE_FIELDS
+            .filter((field) => values[field.key] !== undefined)
+            .map((field) => field.label + ": " + values[field.key] + " g/kWh")
+            .join("\n");
+        }
+        return { ...record, values };
+      }),
+    });
 
   const onFiles = async (files: FileList | null) => {
+    const selected = Array.from(files ?? []);
+    if (!selected.length) return;
     setBusy(true);
     const out = [];
-    for (const f of Array.from(files ?? [])) out.push(await extractPdf(f, s.cyclicCycle));
-    s.set({ cyclicRecords: [...useApp.getState().cyclicRecords, ...out] });
-    setBusy(false);
-    toast.success(`${out.length} PDF(s) processed — review the values below.`);
+    try {
+      for (const file of selected) {
+        try {
+          out.push(await extractPdf(file, s.cyclicCycle));
+        } catch (error) {
+          // Keep one bad file from interrupting processing for the remaining PDFs.
+          out.push({
+            id: uid(),
+            source: file.name,
+            status: "error" as const,
+            message: "Could not process this PDF: " + (error instanceof Error ? error.message : String(error)),
+            sectionText: "",
+            values: {},
+          });
+        }
+      }
+      s.set({ cyclicRecords: [...useApp.getState().cyclicRecords, ...out] });
+      const failed = out.filter((record) => record.status === "error");
+      const needsReview = out.filter((record) => record.status !== "extracted" && record.status !== "error");
+      if (failed.length) {
+        toast.error(`${failed.length} PDF(s) could not be read. Open Details beside each red error status to see the reason.`);
+      }
+      const extracted = out.length - failed.length - needsReview.length;
+      if (extracted > 0) toast.success(`${extracted} PDF(s) extracted. Review the values before exporting.`);
+      if (needsReview.length) toast.warning(`${needsReview.length} PDF(s) need manual review. Open Details for extraction notes.`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="space-y-5">
-      <PageHeader title="PDF Cyclic Emission Summary" desc="Independent module. Values are never invented — blank means not found." actions={<Link to="/report" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Preview report</Link>} />
+      <PageHeader
+        title="PDF Cyclic Emission Summary"
+        desc="Independent module. Values are never invented — blank means not found."
+        actions={
+          <>
+            <Btn onClick={() => {
+              try {
+                exportCyclicWorkbook(useApp.getState());
+                toast.success("Cyclic emission Excel workbook exported.");
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Excel export failed.");
+              }
+            }}>Export Excel</Btn>
+            <Link to="/report" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Preview report</Link>
+          </>
+        }
+      />
       <Panel title="1 · Test cycle">
         <Segmented value={s.cyclicCycle} onChange={(c: CyclicCycle) => s.set({ cyclicCycle: c })} options={(["NRTC", "NRSC", "RMC"] as const).map((v) => ({ value: v, label: v }))} />
       </Panel>
@@ -69,13 +154,13 @@ function Cyclic() {
                       <Inp className={`h-7 w-full min-w-16 text-xs ${!r.values[c.key] && c.key !== "sn" ? "bg-warning/40" : ""}`} value={c.key === "sn" ? r.values.sn ?? String(i + 1) : r.values[c.key] ?? ""} onChange={(e) => setVal(r.id, c.key, e.target.value)} />
                     </td>
                   ))}
-                  <td className="p-1"><div className="font-mono">{r.source}</div><span className={r.status === "extracted" ? "text-success" : "text-destructive"}>{r.status}</span></td>
+                  <td className="p-1"><div className="font-mono">{r.source}</div><span className={r.status === "extracted" ? "text-success" : r.status === "error" ? "text-destructive" : "text-warning"}>{r.status === "review" ? "needs review" : r.status === "no-text" ? "no text / manual entry" : r.status}</span></td>
                   <td className="whitespace-nowrap p-1">
                     <button className="text-primary" onClick={() => setOpen(open === r.id ? "" : r.id)}>Details</button>{" · "}
                     <button className="text-destructive" onClick={() => s.set({ cyclicRecords: s.cyclicRecords.filter((x) => x.id !== r.id) })}>Remove</button>
                   </td>
                 </tr>
-                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
+                {open === r.id && <tr key={r.id + "d"}><td colSpan={99} className="bg-muted p-2"><p className="mb-1">{r.message}</p>{r.values.emissionLimitDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Extracted Stage V summary fields</strong><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.emissionLimitDetails}</pre></div>}{r.values.engineOutDetails && <div className="mb-2 rounded border bg-background p-2"><strong>EngineOut (EBH01) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{ENGINE_OUT_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.engineOutDetails}</pre></details></div>}{r.values.tailpipeDetails && <div className="mb-2 rounded border bg-background p-2"><strong>Tailpipe (EBH02) bench results — not driftcorrected · Specific results Phase 1</strong><div className="mt-2 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-muted text-left"><th className="px-2 py-1">Parameter</th><th className="px-2 py-1">Value</th><th className="px-2 py-1">Unit</th></tr></thead><tbody>{TAILPIPE_FIELDS.filter((field) => r.values[field.key] !== undefined).map((field) => <tr key={field.key} className="border-t"><td className="px-2 py-1">{field.label}</td><td className="w-40 p-1"><Inp className="h-7 w-full font-mono text-xs" value={r.values[field.key] ?? ""} onChange={(e) => setVal(r.id, field.key, e.target.value)} /></td><td className="px-2 py-1">g/kWh</td></tr>)}</tbody></table></div><details className="mt-2"><summary className="cursor-pointer text-xs text-muted-foreground">Raw extracted values</summary><pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">{r.values.tailpipeDetails}</pre></details></div>}<strong>Raw extracted section</strong><pre className="max-h-60 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{r.sectionText || "(no section text)"}</pre></td></tr>}
               </>))}
             </tbody>
           </table>

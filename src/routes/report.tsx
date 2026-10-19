@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useApp } from "@/lib/store";
-import { buildCompareReport, buildCyclicReport } from "@/lib/builders";
+import { buildCompareReport, buildCyclicReport, exportCyclicWorkbook } from "@/lib/builders";
 import { exportDocx, exportPdf, type ReportDoc } from "@/lib/report";
 import { Btn, PageHeader, Segmented } from "@/components/kit";
 
@@ -35,6 +35,14 @@ function Report() {
   return (
     <div>
       <PageHeader title="Report Preview" desc="What you see here is exactly what gets exported." actions={<>
+        {kind === "cyclic" && <Btn disabled={!doc} onClick={() => {
+          try {
+            exportCyclicWorkbook(useApp.getState());
+            toast.success("Cyclic emission Excel workbook exported.");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Excel export failed.");
+          }
+        }}>Export Excel</Btn>}
         <Btn variant="primary" disabled={!doc} onClick={() => doc && exportPdf(doc, `${name}.pdf`)}>Export PDF</Btn>
         <Btn disabled={!doc} onClick={() => doc && exportDocx(doc, `${name}.docx`)}>Export Word</Btn>
       </>} />

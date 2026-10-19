@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { analyzeGraph, stats, type GraphAnalysis } from "./analysis";
+import { analyzeGraph, stats, type GraphAnalysis, type ParameterAliases } from "./analysis";
 import type { Dataset, GraphConfig, TraceStyle } from "./store";
 
 export const PALETTE = ["#1f5fa8", "#d1495b", "#2a9d5c", "#e08e0b", "#6a4c93", "#0f8b8d", "#8c564b", "#c2185b", "#455a64", "#7cb342"];
@@ -26,19 +26,25 @@ const LEGEND = {
   left: { orientation: "v", x: -0.2, y: 1, xanchor: "right" },
 };
 
-export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz", large = false) {
-  const a = analyzeGraph(g, datasets, dataType);
+export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "triggered" | "1hz", large = false, aliases: ParameterAliases = {}) {
+  const a = analyzeGraph(g, datasets, dataType, aliases);
   const fs = large ? 18 : 12;
   const data: object[] = [];
   for (const s of a.series) {
     if (g.hidden.includes(s.key) || g.hidden.includes(s.dsId) || g.hidden.includes(`col::${s.col}`)) continue;
     const st = traceStyle(g, datasets, s.key);
+    const triggeredLabels = dataType === "triggered";
     data.push({
       type: "scattergl",
-      mode: g.mode,
+      mode: triggeredLabels ? `${g.mode}+text` : g.mode,
       name: st.label,
       x: s.x,
       y: s.y,
+      ...(triggeredLabels ? {
+        text: s.y.map((value) => value === null ? "" : Number(value.toPrecision(5)).toString()),
+        textposition: "top center",
+        textfont: { size: large ? 10 : 9, color: st.color },
+      } : {}),
       line: { color: st.color, width: st.width, dash: st.dash },
       marker: { color: st.color, size: large ? 8 : 6 },
       connectgaps: false,
@@ -47,14 +53,22 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
   }
   for (const d of a.diffs) {
     const st = traceStyle(g, datasets, d.key.replace("diff::", ""));
+    const diffLabel = `Δ${g.diffMode === "pct" ? "%" : ""} ${d.label}`;
+    const triggeredLabels = dataType === "triggered";
     data.push({
       type: "scattergl",
-      mode: dataType === "triggered" ? "lines+markers" : "lines",
-      name: `Δ${g.diffMode === "pct" ? "%" : ""} ${d.label}`,
+      mode: triggeredLabels ? "lines+markers+text" : "lines",
+      name: diffLabel,
       x: d.x,
       y: d.y,
+      ...(triggeredLabels ? {
+        text: d.y.map((value) => value === null ? "" : Number(value.toPrecision(5)).toString()),
+        textposition: "top center",
+        textfont: { size: large ? 9 : 8, color: st.color },
+      } : {}),
       yaxis: "y2",
       line: { color: st.color, width: 1.5, dash: "dot" },
+      marker: { color: st.color, size: large ? 7 : 5 },
       connectgaps: false,
     });
   }
@@ -71,7 +85,7 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
     plot_bgcolor: "#ffffff",
     margin: { l: 80, r: g.legend === "right" ? 20 : 30, t: g.subtitle ? 90 : 70, b: g.legend === "bottom" ? 120 : 70 },
     legend: { ...LEGEND[g.legend], font: { size: fs } },
-    hovermode: "closest",
+    hovermode: "x unified",
     dragmode: "zoom",
     xaxis: {
       title: { text: g.xLabel || g.xCol },
@@ -79,6 +93,11 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
       zeroline: false,
       showline: true,
       linecolor: "#94a3b8",
+      showspikes: true,
+      spikesnap: "cursor",
+      spikemode: "across",
+      spikethickness: 1.5,
+      spikecolor: "#64748b",
       type: dataType === "triggered" ? "category" : "linear",
       ...(lo !== undefined && hi !== undefined && dataType !== "triggered" ? { range: [lo, hi] } : {}),
     },
@@ -87,6 +106,7 @@ export function buildFigure(g: GraphConfig, datasets: Dataset[], dataType: "trig
       gridcolor: "#e2e8f0",
       showline: true,
       linecolor: "#94a3b8",
+      showspikes: false,
       domain: showDiff ? [0.38, 1] : [0, 1],
     },
   };
