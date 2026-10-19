@@ -234,7 +234,12 @@ describe("Stage V PDF extraction", () => {
   });
 
   it("returns a clear error for a file that is not a PDF", async () => {
-    const file = new File(["this is not a PDF"], "not-a-report.pdf", { type: "application/pdf" });
+    const bytes = new TextEncoder().encode("this is not a PDF");
+    const file = {
+      name: "not-a-report.pdf",
+      size: bytes.length,
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    } as File;
     const record = await extractPdf(file, "NRTC");
     expect(record.status).toBe("error");
     expect(record.message).toContain("valid PDF");
