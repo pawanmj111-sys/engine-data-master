@@ -64,9 +64,6 @@ function sameView(a: ViewState, b: ViewState) {
 function viewRelayoutArgs(view: ViewState) {
   const result: Record<string, unknown> = {};
   for (const axis of ["xaxis", "yaxis"] as const) {
-    if (view.autorange === true) {
-      // The axis state is stored on the nested view object.
-    }
     if (view[axis].autorange || !view[axis].range) {
       result[`${axis}.autorange`] = true;
     } else {
